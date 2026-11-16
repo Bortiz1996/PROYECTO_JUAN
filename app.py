@@ -4,6 +4,7 @@ Tablero ciudadano mobile-first. Datos: IDEAM, estación 29037020 (nivel medio di
 """
 from __future__ import annotations
 
+import base64
 import math
 from pathlib import Path
 from urllib.parse import quote
@@ -99,13 +100,21 @@ st.markdown(
       }
       .eyebrow {color: #527080; font-size: .73rem; font-weight: 700;
         letter-spacing: .13em; text-transform: uppercase;}
-      .page-header {text-align: center; margin-bottom: 1.5rem;}
-      .page-header h1 {font-size: 3.2rem !important; margin: .15rem 0 0 !important;}
-      .page-header h2 {font-size: 1.5rem !important; margin: 0 0 .35rem !important;}
-      .page-header p {color: #405868; margin: 0;}
-      [data-testid="stImage"] {display: flex; justify-content: center;}
-      [data-testid="stImage"] img {border: 2px solid #fff; border-radius: 50%;
-        box-shadow: 0 4px 14px rgba(20, 45, 60, .12);}
+      .profile-card {position: relative; overflow: hidden; margin: 0 auto 2rem;
+        background: #fff; border: 1px solid #dfe7ec; border-radius: 16px;
+        box-shadow: 0 8px 26px rgba(20, 45, 60, .06);}
+      .profile-cover {height: 180px; background:
+        radial-gradient(ellipse at 18% 120%, rgba(114, 198, 186, .75), transparent 42%),
+        radial-gradient(ellipse at 88% 110%, rgba(76, 158, 177, .85), transparent 48%),
+        linear-gradient(125deg, #123d53, #087f98 62%, #55a9ad);}
+      .profile-avatar {position: absolute; top: 104px; left: 50%; width: 144px;
+        height: 144px; transform: translateX(-50%); object-fit: cover;
+        border: 5px solid #fff; border-radius: 50%;
+        box-shadow: 0 4px 14px rgba(20, 45, 60, .18);}
+      .profile-content {padding: 78px 24px 24px; text-align: center;}
+      .profile-content h1 {font-size: 2.8rem !important; margin: 0 !important;}
+      .profile-content h2 {font-size: 1.35rem !important; margin: .1rem 0 .55rem !important;}
+      .profile-content p {color: #405868; margin: 0;}
       .reading-card {background: #fff; border: 1px solid #dfe7ec; border-radius: 14px;
         padding: 1.6rem 1.8rem; box-shadow: 0 8px 26px rgba(20, 45, 60, .06);}
       .reading-value {color: #102b3b; font-size: clamp(3rem, 7vw, 5rem);
@@ -509,16 +518,18 @@ def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> s
 
 
 # ═══════════════════════════ CARGA ═══════════════════════════
-_, logo_col, _ = st.columns([1, 2, 1])
-with logo_col:
-    st.image(str(JUAN_ICON_PATH), width=112)
+icon_data = base64.b64encode(JUAN_ICON_PATH.read_bytes()).decode("ascii")
 st.markdown(
     f"""
-    <div class="page-header">
-      <h1>JUAN</h1>
-      <h2>Nivel del río en Calamar</h2>
-      <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel medio diario</p>
-    </div>
+    <section class="profile-card" aria-label="Perfil del proyecto JUAN">
+      <div class="profile-cover"></div>
+      <img class="profile-avatar" src="data:image/jpeg;base64,{icon_data}" alt="Imagen de JUAN">
+      <div class="profile-content">
+        <h1>JUAN</h1>
+        <h2>Nivel del río en Calamar</h2>
+        <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel medio diario</p>
+      </div>
+    </section>
     """,
     unsafe_allow_html=True,
 )
