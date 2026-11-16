@@ -4,6 +4,7 @@ Tablero público y gratuito con el nivel del río Magdalena en la estación limn
 
 ```
 ├── assets/juan_icon.jpeg              # icono y marca JUAN
+├── assets/juan_portada.webp            # fotografía de fondo del perfil
 ├── scraper_ideam.py                    # descarga, limpia y combina datos
 ├── nivel_calamar.csv                   # histórico limpio (lo genera el scraper)
 ├── nivel_calamar_fuente.json           # versión del ZIP IDEAM (lo genera el scraper)

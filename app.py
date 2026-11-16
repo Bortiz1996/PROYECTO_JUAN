@@ -23,6 +23,7 @@ ESTACION_LATITUD = 10.243275
 ESTACION_LONGITUD = -74.915017
 ESTACION_ALTITUD_MSNM = 8
 JUAN_ICON_PATH = Path(__file__).parent / "assets" / "juan_icon.jpeg"
+JUAN_COVER_PATH = Path(__file__).parent / "assets" / "juan_portada.webp"
 CSV_PATH = Path(__file__).with_name("nivel_calamar.csv")
 SUBZONAS_CUENCA_PATH = Path(__file__).parent / "assets" / "subzonas_magdalena_cauca.csv"
 METEO_URL = "https://api.open-meteo.com/v1/forecast"
@@ -103,10 +104,13 @@ st.markdown(
       .profile-card {position: relative; overflow: hidden; margin: 0 auto 2rem;
         background: #fff; border: 1px solid #dfe7ec; border-radius: 16px;
         box-shadow: 0 8px 26px rgba(20, 45, 60, .06);}
-      .profile-cover {height: 180px; background:
+      .profile-cover {position: relative; overflow: hidden; height: 180px; background:
         radial-gradient(ellipse at 18% 120%, rgba(114, 198, 186, .75), transparent 42%),
         radial-gradient(ellipse at 88% 110%, rgba(76, 158, 177, .85), transparent 48%),
         linear-gradient(125deg, #123d53, #087f98 62%, #55a9ad);}
+      .profile-cover::before {content: ""; position: absolute; inset: 0;
+        background-image: var(--cover-image); background-position: center 58%;
+        background-size: cover; opacity: .42;}
       .profile-avatar {position: absolute; top: 104px; left: 50%; width: 144px;
         height: 144px; transform: translateX(-50%); object-fit: cover;
         border: 5px solid #fff; border-radius: 50%;
@@ -519,10 +523,11 @@ def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> s
 
 # ═══════════════════════════ CARGA ═══════════════════════════
 icon_data = base64.b64encode(JUAN_ICON_PATH.read_bytes()).decode("ascii")
+cover_data = base64.b64encode(JUAN_COVER_PATH.read_bytes()).decode("ascii")
 st.markdown(
     f"""
     <section class="profile-card" aria-label="Perfil del proyecto JUAN">
-      <div class="profile-cover"></div>
+      <div class="profile-cover" style="--cover-image: url('data:image/webp;base64,{cover_data}')"></div>
       <img class="profile-avatar" src="data:image/jpeg;base64,{icon_data}" alt="Imagen de JUAN">
       <div class="profile-content">
         <h1>JUAN</h1>
