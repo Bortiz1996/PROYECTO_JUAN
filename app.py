@@ -12,6 +12,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # ═══════════════════════════ CONFIGURACIÓN ═══════════════════════════
 ESTACION_CODIGO = "29037020"
@@ -23,6 +25,21 @@ JUAN_ICON_PATH = Path(__file__).parent / "assets" / "juan_icon.jpeg"
 CSV_PATH = Path(__file__).with_name("nivel_calamar.csv")
 SUBZONAS_CUENCA_PATH = Path(__file__).parent / "assets" / "subzonas_magdalena_cauca.csv"
 METEO_URL = "https://api.open-meteo.com/v1/forecast"
+METEO_SESSION = requests.Session()
+METEO_SESSION.mount(
+    "https://",
+    HTTPAdapter(
+        max_retries=Retry(
+            total=2,
+            connect=2,
+            read=2,
+            status=2,
+            backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset({"GET"}),
+        )
+    ),
+)
 METEO_LATITUD = 10.25271
 METEO_LONGITUD = -74.91574
 METEO_ZONA_HORARIA = "America/Bogota"
@@ -181,7 +198,7 @@ def describir_tiempo(codigo: int) -> str:
 
 @st.cache_data(ttl=900, show_spinner=False)
 def cargar_meteorologia() -> dict:
-    respuesta = requests.get(
+    respuesta = METEO_SESSION.get(
         METEO_URL,
         params={
             "latitude": METEO_LATITUD,
@@ -192,7 +209,7 @@ def cargar_meteorologia() -> dict:
             ),
             "timezone": METEO_ZONA_HORARIA,
         },
-        timeout=15,
+        timeout=(10, 30),
     )
     respuesta.raise_for_status()
     datos = respuesta.json()
@@ -241,7 +258,7 @@ def cargar_pronostico_cuenca(hora_inicio: str) -> pd.DataFrame:
     tamano_lote = 100
     for inicio_lote in range(0, len(subzonas), tamano_lote):
         lote = subzonas.iloc[inicio_lote:inicio_lote + tamano_lote]
-        respuesta = requests.get(
+        respuesta = METEO_SESSION.get(
             METEO_URL,
             params={
                 "latitude": ",".join(f"{latitud:.5f}" for latitud in lote["Latitud"]),
@@ -250,7 +267,7 @@ def cargar_pronostico_cuenca(hora_inicio: str) -> pd.DataFrame:
                 "forecast_days": 2,
                 "timezone": METEO_ZONA_HORARIA,
             },
-            timeout=30,
+            timeout=(10, 45),
         )
         respuesta.raise_for_status()
         datos = respuesta.json()
