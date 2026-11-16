@@ -99,6 +99,10 @@ st.markdown(
       }
       .eyebrow {color: #527080; font-size: .73rem; font-weight: 700;
         letter-spacing: .13em; text-transform: uppercase;}
+      .page-header {text-align: center; margin-bottom: 1.5rem;}
+      .page-header h1 {margin-top: .15rem !important;}
+      .page-header p {color: #405868; margin: 0;}
+      [data-testid="stImage"] {display: flex; justify-content: center;}
       [data-testid="stImage"] img {border: 2px solid #fff; border-radius: 50%;
         box-shadow: 0 4px 14px rgba(20, 45, 60, .12);}
       .reading-card {background: #fff; border: 1px solid #dfe7ec; border-radius: 14px;
@@ -504,13 +508,19 @@ def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> s
 
 
 # ═══════════════════════════ CARGA ═══════════════════════════
-logo_col, title_col = st.columns([0.18, 1], gap="small", vertical_alignment="center")
+_, logo_col, _ = st.columns([1, 2, 1])
 with logo_col:
-    st.image(str(JUAN_ICON_PATH), width=88, caption="JUAN")
-with title_col:
-    st.markdown('<div class="eyebrow">JUAN · OBSERVATORIO HIDROLÓGICO</div>', unsafe_allow_html=True)
-    st.title("Nivel del río en Calamar")
-    st.caption(f"{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel medio diario")
+    st.image(str(JUAN_ICON_PATH), width=112)
+st.markdown(
+    f"""
+    <div class="page-header">
+      <div class="eyebrow">Información del río Magdalena</div>
+      <h1>Nivel del río en Calamar</h1>
+      <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel medio diario</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if not CSV_PATH.exists():
     st.error("Todavía no hay datos. Ejecute el workflow «Actualizar datos nivel río Calamar» en GitHub Actions.")
