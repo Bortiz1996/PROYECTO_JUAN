@@ -2,7 +2,7 @@ name: Actualizar datos nivel río Calamar
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # cada 6 horas (hora UTC)
+    - cron: "0 12 * * *"    # diario a las 7:00 a. m. en Colombia (12:00 UTC)
   workflow_dispatch:          # ejecución manual desde la pestaña Actions
 
 permissions:
