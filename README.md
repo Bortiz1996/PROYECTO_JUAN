@@ -12,7 +12,7 @@ Tablero público y gratuito con el nivel del río Magdalena en la estación limn
 └── .github/workflows/actualizar_datos.yml
 ```
 
-El icono de JUAN aparece centrado sobre el título del tablero y como icono de la pestaña del navegador.
+El encabezado muestra el icono centrado sobre el nombre «JUAN» y el título «Nivel del río en Calamar». El icono también aparece en la pestaña del navegador.
 
 ## 1. Subir el proyecto a GitHub
 1. Cree un repositorio **público** (ej. `nivel-rio-calamar`) en <   >.

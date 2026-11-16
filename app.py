@@ -100,7 +100,8 @@ st.markdown(
       .eyebrow {color: #527080; font-size: .73rem; font-weight: 700;
         letter-spacing: .13em; text-transform: uppercase;}
       .page-header {text-align: center; margin-bottom: 1.5rem;}
-      .page-header h1 {margin-top: .15rem !important;}
+      .page-header h1 {font-size: 3.2rem !important; margin: .15rem 0 0 !important;}
+      .page-header h2 {font-size: 1.5rem !important; margin: 0 0 .35rem !important;}
       .page-header p {color: #405868; margin: 0;}
       [data-testid="stImage"] {display: flex; justify-content: center;}
       [data-testid="stImage"] img {border: 2px solid #fff; border-radius: 50%;
@@ -514,8 +515,8 @@ with logo_col:
 st.markdown(
     f"""
     <div class="page-header">
-      <div class="eyebrow">Información del río Magdalena</div>
-      <h1>Nivel del río en Calamar</h1>
+      <h1>JUAN</h1>
+      <h2>Nivel del río en Calamar</h2>
       <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel medio diario</p>
     </div>
     """,
