@@ -116,12 +116,14 @@ st.markdown(
         border: 5px solid #fff; border-radius: 50%;
         box-shadow: 0 4px 14px rgba(20, 45, 60, .18);}
       .profile-content {padding: 78px 24px 24px; text-align: center;}
-      .profile-content h1 {color: #122a3a !important; font-size: 2.65rem !important;
-        font-weight: 800 !important; letter-spacing: .16em !important;
-        margin: 0 !important; padding-left: .16em;}
-      .profile-honor {color: #527080 !important; font-size: .72rem;
-        font-weight: 700; letter-spacing: .12em; margin: 0 0 .45rem !important;
-        text-transform: uppercase;}
+      .profile-content h1 {display: inline-block; min-width: 250px; box-sizing: border-box;
+        color: #fff !important; background: linear-gradient(110deg, #123d53, #087f98 70%, #1b99a4);
+        border-radius: 12px; box-shadow: 0 6px 16px rgba(8, 77, 94, .2);
+        font-size: 3.2rem !important; font-weight: 900 !important;
+        letter-spacing: .1em !important; line-height: 1.05;
+        margin: 0 0 .65rem !important; padding: .18em .42em .2em;}
+      .profile-content h1::after {content: ""; display: block; width: 32%; height: 3px;
+        margin: .1em auto 0; border-radius: 99px; background: #9ee3d6;}
       .profile-content h2 {font-size: 1.35rem !important; margin: .1rem 0 .55rem !important;}
       .profile-content p {color: #405868; margin: 0;}
       .reading-card {background: #fff; border: 1px solid #dfe7ec; border-radius: 14px;
@@ -536,7 +538,6 @@ st.markdown(
       <img class="profile-avatar" src="data:image/png;base64,{icon_data}" alt="Imagen de JUAN">
       <div class="profile-content">
         <h1>JUAN</h1>
-        <p class="profile-honor">Proyecto en homenaje</p>
         <h2>Nivel del río en Calamar</h2>
         <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel medio diario</p>
       </div>

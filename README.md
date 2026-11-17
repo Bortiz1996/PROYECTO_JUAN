@@ -13,7 +13,7 @@ Tablero público y gratuito con el nivel del río Magdalena en la estación limn
 └── .github/workflows/actualizar_datos.yml
 ```
 
-El encabezado presenta una tarjeta de perfil con portada, el retrato de JUAN, el nombre del proyecto destacado, la indicación «Proyecto en homenaje» y el título «Nivel del río en Calamar». El icono también aparece en la pestaña del navegador.
+El encabezado presenta una tarjeta de perfil con portada, el retrato de JUAN, el nombre del proyecto destacado con una franja gráfica en tonos del río y el título «Nivel del río en Calamar». El icono también aparece en la pestaña del navegador.
 
 ## 1. Subir el proyecto a GitHub
 1. Cree un repositorio **público** (ej. `nivel-rio-calamar`) en <   >.
