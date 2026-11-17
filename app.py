@@ -22,6 +22,7 @@ ESTACION_NOMBRE = "Calamar, Bolívar"
 ESTACION_LATITUD = 10.243275
 ESTACION_LONGITUD = -74.915017
 ESTACION_ALTITUD_MSNM = 8
+NIVEL_REFERENCIA_CM = 950
 JUAN_ICON_PATH = Path(__file__).parent / "assets" / "juan_icon.png"
 JUAN_COVER_PATH = Path(__file__).parent / "assets" / "juan_portada.webp"
 CSV_PATH = Path(__file__).with_name("nivel_calamar.csv")
@@ -731,6 +732,16 @@ for k, (color, nombre) in estilos.items():
     fig.add_hline(y=val, line_dash="dot", line_color=color, line_width=2,
                   annotation_text=f"{nombre} {val:.0f} cm", annotation_position="top left",
                   annotation_font=dict(color=color, size=13))
+y_vals.append(float(NIVEL_REFERENCIA_CM))
+fig.add_hline(
+    y=NIVEL_REFERENCIA_CM,
+    line_dash="dash",
+    line_color="#718a98",
+    line_width=1.5,
+    annotation_text="Referencia · 950 cm",
+    annotation_position="top left",
+    annotation_font=dict(color="#526b79", size=12),
+)
 rango = max(y_vals) - min(y_vals)
 fig.update_layout(
     height=390, margin=dict(l=8, r=12, t=24, b=8), showlegend=False,
