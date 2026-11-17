@@ -46,9 +46,6 @@ METEO_LATITUD = 10.25271
 METEO_LONGITUD = -74.91574
 METEO_ZONA_HORARIA = "America/Bogota"
 HORIZONTE_METEO_HORAS = 24
-REFERENCIA_DESBORDAMIENTO_CM = 900
-FECHA_EVENTO_REFERENCIA = pd.Timestamp("2010-11-30")
-NIVEL_EVENTO_REFERENCIA_CM = 950
 
 # URL pública de la app (pegar aquí la de Streamlit Cloud para el botón de WhatsApp).
 APP_URL = ""
@@ -167,17 +164,11 @@ st.markdown(
         background: #b7cbd4; transform: translateY(-50%);}
       .gauge-scale {position: absolute; left: 24px; width: 54px; text-align: right;
         color: #d7e5eb; font-size: 11px; transform: translateY(-50%);}
-      .gauge-reference {position: absolute; left: 124px; width: 84px;
-        border-top: 2px dashed #e26168; transform: translateY(-50%);}
-      .gauge-reference-label {position: absolute; left: 216px; color: #ffb5b9;
-        font-size: 11px; transform: translateY(-50%);}
       .gauge-current {position: absolute; left: 120px; width: 89px;
         border-top: 2px solid #effdff; transform: translateY(-50%);}
       .gauge-value {position: absolute; left: 216px; padding: 6px 8px; border-radius: 6px;
         background: #167f94; color: #fff; font-size: 13px; font-weight: 700;
         white-space: nowrap; transform: translateY(-50%);}
-      .gauge-event {position: absolute; bottom: 17px; left: 23px; color: #91aeba;
-        font-size: 10px; letter-spacing: .8px;}
       @media (prefers-reduced-motion: reduce) {
         .gauge-wave {animation: none;}
       }
@@ -482,10 +473,6 @@ def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> s
     alto_track = y_inferior - y_superior
     posicion = lambda valor: y_inferior - max(0, min(valor / escala_max_cm, 1)) * alto_track
     nivel_y = posicion(nivel_cm)
-    referencia_y = posicion(REFERENCIA_DESBORDAMIENTO_CM)
-    etiqueta_nivel_y = nivel_y
-    if abs(nivel_cm - REFERENCIA_DESBORDAMIENTO_CM) < 35:
-        etiqueta_nivel_y += -42 if nivel_cm >= REFERENCIA_DESBORDAMIENTO_CM else 42
 
     marcas_html = []
     for marca in range(0, escala_max_cm + 1, 100):
@@ -518,12 +505,9 @@ def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> s
         </div>
       </div>
       {''.join(marcas_html)}
-      <div class="gauge-reference" style="top:{referencia_y:.1f}px"></div>
-      <div class="gauge-reference-label" style="top:{referencia_y:.1f}px">900 cm</div>
       {''.join(alertas_html)}
       <div class="gauge-current" style="top:{nivel_y:.1f}px"></div>
-      <div class="gauge-value" style="top:{etiqueta_nivel_y:.1f}px">{nivel_cm / 100:.2f} m</div>
-      <div class="gauge-event">30 NOV 2010 · REGISTRO 950 cm</div>
+      <div class="gauge-value" style="top:{nivel_y:.1f}px">{nivel_cm / 100:.2f} m</div>
     </div>
     """
 
@@ -571,8 +555,6 @@ umbrales = calcular_umbrales(df)
 limites_configurados = [v for v in umbrales["valores"].values() if v is not None]
 mayor_referencia = max([
     float(df["Nivel_cm"].max()),
-    float(REFERENCIA_DESBORDAMIENTO_CM),
-    float(NIVEL_EVENTO_REFERENCIA_CM),
     *limites_configurados,
 ])
 escala_max_cm = max(1000, int(math.ceil(mayor_referencia / 100) * 100))
@@ -583,11 +565,7 @@ with col_medidor:
         crear_medidor_html(nivel_cm, escala_max_cm, umbrales),
         unsafe_allow_html=True,
     )
-    st.caption(
-        f"Escala visual: 0–{escala_max_cm / 100:.0f} m. "
-        f"Referencia histórica: 900 cm; el 30 nov 2010 el registro fue "
-        f"{NIVEL_EVENTO_REFERENCIA_CM} cm. No es una cota oficial."
-    )
+    st.caption(f"Escala visual: 0–{escala_max_cm / 100:.0f} m.")
 
 with col_lectura:
     fecha_texto = fecha_es(ts_ult, con_hora=pd.notna(ultimo["Ultima_lectura"]))
@@ -753,24 +731,6 @@ for k, (color, nombre) in estilos.items():
     fig.add_hline(y=val, line_dash="dot", line_color=color, line_width=2,
                   annotation_text=f"{nombre} {val:.0f} cm", annotation_position="top left",
                   annotation_font=dict(color=color, size=13))
-if datos_grafica["Fecha"].min() <= FECHA_EVENTO_REFERENCIA <= datos_grafica["Fecha"].max():
-    fig.add_hline(
-        y=REFERENCIA_DESBORDAMIENTO_CM,
-        line_dash="dash",
-        line_color="#e26168",
-        line_width=2,
-        annotation_text="Referencia histórica · 900 cm",
-        annotation_position="top left",
-        annotation_font=dict(color="#c64d58", size=12),
-    )
-    fig.add_trace(go.Scatter(
-        x=[FECHA_EVENTO_REFERENCIA],
-        y=[NIVEL_EVENTO_REFERENCIA_CM],
-        mode="markers",
-        name="30 nov 2010",
-        marker=dict(color="#c64d58", size=10, line=dict(color="#fff", width=1.5)),
-        hovertemplate="30 nov 2010<br>Nivel medio diario: <b>950 cm</b><extra></extra>",
-    ))
 rango = max(y_vals) - min(y_vals)
 fig.update_layout(
     height=390, margin=dict(l=8, r=12, t=24, b=8), showlegend=False,
