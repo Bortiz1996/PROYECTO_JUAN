@@ -29,10 +29,7 @@ JUAN_COVER_PATH = Path(__file__).parent / "assets" / "juan_portada.webp"
 CSV_PATH = Path(__file__).with_name("nivel_calamar.csv")
 SUBZONAS_CUENCA_PATH = Path(__file__).parent / "assets" / "subzonas_magdalena_cauca.csv"
 FEWS_VISOR_URL = "https://fews.ideam.gov.co/visorfews/nacional"
-FEWS_NIVEL_URL = (
-    "https://fews.ideam.gov.co/visorfews/proxy/datos-ideam/s3-estacionesideam/"
-    "observaciones/historicos/csv/NV_MEDIA_D/0029037020-NV_MEDIA_D.csv"
-)
+FEWS_NIVEL_URL = "https://fews.ideam.gov.co/visorfews/descargas/SeriesHM_conv.csv"
 METEO_URL = "https://api.open-meteo.com/v1/forecast"
 METEO_SESSION = requests.Session()
 METEO_SESSION.mount(
@@ -74,7 +71,7 @@ PERIODOS_GRAFICA = {
 MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
 st.set_page_config(
-    page_title="JUAN | Nivel del río en Calamar",
+    page_title="JUAN | Observatorio del nivel del río Magdalena en Calamar",
     page_icon=JUAN_ICON_PATH,
     layout="wide",
 )
@@ -431,6 +428,7 @@ def cargar_datos(path: str, mtime: float) -> pd.DataFrame:
     df = pd.read_csv(path)
     df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
     df["Nivel_cm"] = pd.to_numeric(df["Nivel_cm"], errors="coerce")
+    df["Fuente"] = "IDEAM · histórico"
     if "Ultima_lectura" in df.columns:
         df["Ultima_lectura"] = pd.to_datetime(df["Ultima_lectura"], errors="coerce")
     else:
@@ -442,25 +440,27 @@ def cargar_datos(path: str, mtime: float) -> pd.DataFrame:
 def cargar_nivel_fews_calamar() -> pd.DataFrame:
     respuesta = requests.get(FEWS_NIVEL_URL, timeout=(10, 30))
     respuesta.raise_for_status()
-    datos = pd.read_csv(io.StringIO(respuesta.text))
-
-    columnas = {"fechaObservacion", "valorObservado", "nivelAprobacion"}
-    if not columnas.issubset(datos.columns):
-        raise ValueError("FEWS devolvió un formato de serie no reconocido para Calamar.")
-
-    datos = datos.rename(
-        columns={
-            "fechaObservacion": "Fecha",
-            "valorObservado": "Nivel_cm",
-            "nivelAprobacion": "Estado",
-        }
+    datos = pd.read_csv(
+        io.BytesIO(respuesta.content),
+        sep=";",
+        dtype={"ID_ESTACION": str},
+        encoding="utf-8-sig",
     )
+
+    columnas = {"ID_ESTACION", "FECHA_HORA", "NIVEL_INST"}
+    if not columnas.issubset(datos.columns):
+        raise ValueError("FEWS devolvió un formato de serie consolidada no reconocido.")
+    datos = datos[datos["ID_ESTACION"] == f"00{ESTACION_CODIGO}"].copy()
+    datos = datos.rename(columns={"FECHA_HORA": "Fecha", "NIVEL_INST": "Nivel_m"})
     datos["Fecha"] = pd.to_datetime(datos["Fecha"], errors="coerce")
-    datos["Nivel_cm"] = pd.to_numeric(datos["Nivel_cm"], errors="coerce")
+    datos["Nivel_m"] = pd.to_numeric(datos["Nivel_m"], errors="coerce")
+    datos["Nivel_cm"] = datos["Nivel_m"] * 100
     datos = datos.dropna(subset=["Fecha", "Nivel_cm"])
     datos = datos[datos["Nivel_cm"].between(0, 2000)]
     if datos.empty:
         raise ValueError("FEWS no devolvió lecturas válidas de nivel para Calamar.")
+    datos["Ultima_lectura"] = datos["Fecha"]
+    datos["Fuente"] = "FEWS IDEAM · serie consolidada"
     return datos.sort_values("Fecha").reset_index(drop=True)
 
 
@@ -566,7 +566,7 @@ st.markdown(
       <div class="profile-content">
         <h1>JUAN</h1>
         <h2>Nivel del río en Calamar</h2>
-        <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel medio diario</p>
+        <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel observado</p>
       </div>
     </section>
     """,
@@ -578,6 +578,18 @@ if not CSV_PATH.exists():
     st.stop()
 
 df = cargar_datos(str(CSV_PATH), CSV_PATH.stat().st_mtime)
+datos_fews: pd.DataFrame | None = None
+error_fews: Exception | None = None
+try:
+    with st.spinner("Consultando la serie de nivel de FEWS IDEAM..."):
+        datos_fews = cargar_nivel_fews_calamar()
+except (requests.RequestException, pd.errors.ParserError, pd.errors.EmptyDataError, ValueError) as exc:
+    error_fews = exc
+if datos_fews is not None:
+    lecturas_nuevas = datos_fews[datos_fews["Fecha"] > df["Fecha"].max()]
+    if not lecturas_nuevas.empty:
+        df = pd.concat([df, lecturas_nuevas], ignore_index=True, sort=False)
+        df = df.sort_values("Fecha").reset_index(drop=True)
 if len(df) < 2:
     st.warning("Hay muy pocos datos para mostrar el tablero.")
     st.stop()
@@ -624,7 +636,8 @@ with col_lectura:
           <div class="reading-divider"></div>
           <div class="reading-detail">
             <strong>Fecha de lectura</strong><br>{fecha_texto}<br>
-            <strong>Variación</strong><br>{cambio_texto}
+            <strong>Variación</strong><br>{cambio_texto}<br>
+            <strong>Fuente</strong><br>{ultimo["Fuente"]}
           </div>
         </div>
         """,
@@ -641,8 +654,8 @@ if edad_dias > DIAS_MAX_SIN_DATOS:
 # ═════════════════════════════ VISOR FEWS ═════════════════════════════
 st.subheader("Visor FEWS IDEAM · Calamar")
 st.caption(
-    "Ubicación de la estación y serie diaria de nivel medio publicada por FEWS IDEAM. "
-    "La publicación puede tener retraso; no es una medición instantánea."
+    "Ubicación de la estación y serie consolidada de nivel observado publicada por FEWS IDEAM. "
+    "La publicación puede tener retraso; no es una medición en tiempo real."
 )
 mapa_estacion = pd.DataFrame(
     [
@@ -660,12 +673,8 @@ if boton_actualizar.button("Consultar FEWS ahora", key="consultar_fews"):
     st.rerun()
 enlace_fews.link_button("Abrir visor FEWS nacional", FEWS_VISOR_URL, width="stretch")
 
-datos_fews: pd.DataFrame | None = None
-try:
-    with st.spinner("Consultando la serie de nivel de FEWS IDEAM..."):
-        datos_fews = cargar_nivel_fews_calamar()
-except (requests.RequestException, pd.errors.ParserError, pd.errors.EmptyDataError, ValueError) as exc:
-    st.error(f"No se pudo cargar la serie FEWS de Calamar: {exc}")
+if error_fews is not None:
+    st.error(f"No se pudo cargar la serie FEWS de Calamar: {error_fews}")
 
 mapa_col, nivel_col = st.columns([1.2, 0.8], gap="large")
 with mapa_col:
@@ -686,12 +695,9 @@ with mapa_col:
 with nivel_col:
     if datos_fews is not None:
         lectura_fews = datos_fews.iloc[-1]
-        st.metric("Último nivel diario FEWS", f"{lectura_fews['Nivel_cm']:.1f} cm")
-        st.caption(f"Fecha de lectura: {fecha_es(lectura_fews['Fecha'])}")
-        estado_fews = lectura_fews["Estado"]
-        if pd.notna(estado_fews) and str(estado_fews).strip():
-            st.caption(f"Clasificación publicada: {estado_fews}")
-        st.caption("Serie: nivel medio diario · unidad: centímetros.")
+        st.metric("Último nivel observado FEWS", f"{lectura_fews['Nivel_cm']:.1f} cm")
+        st.caption(f"Fecha de lectura: {fecha_es(lectura_fews['Fecha'], con_hora=True)}")
+        st.caption("Serie consolidada · unidad original: metros, convertida a centímetros.")
     st.markdown(
         "[Abrir ubicación en OpenStreetMap]"
         f"(https://www.openstreetmap.org/?mlat={ESTACION_LATITUD}&mlon={ESTACION_LONGITUD}"
@@ -713,10 +719,10 @@ if datos_fews is not None:
             mode="lines+markers" if len(datos_fews) <= 2000 else "lines",
             line=dict(color="#167f94", width=2.5),
             marker=dict(size=5, color="#167f94"),
-            customdata=datos_fews["Estado"],
+            customdata=datos_fews["Fuente"],
             hovertemplate=(
-                "<b>%{x|%d %b %Y}</b><br>Nivel: <b>%{y:.1f} cm</b>"
-                "<br>Clasificación: %{customdata}<extra></extra>"
+                "<b>%{x|%d %b %Y %H:%M}</b><br>Nivel: <b>%{y:.1f} cm</b>"
+                "<br>%{customdata}<extra></extra>"
             ),
         )
     )
@@ -729,7 +735,7 @@ if datos_fews is not None:
         plot_bgcolor="#ffffff",
         font=dict(family="Arial, sans-serif", color="#455d6b"),
         xaxis=dict(gridcolor="#edf1f3", zeroline=False),
-        yaxis=dict(title="Nivel medio diario (cm)", gridcolor="#edf1f3", zeroline=False),
+        yaxis=dict(title="Nivel observado (cm)", gridcolor="#edf1f3", zeroline=False),
     )
     st.plotly_chart(
         fig_fews,
@@ -819,7 +825,10 @@ if dias_periodo is None:
     datos_grafica = df.copy()
 else:
     datos_grafica = df[df["Fecha"] >= fecha_ult - pd.Timedelta(days=dias_periodo)].copy()
-datos_grafica["FechaTxt"] = datos_grafica["Fecha"].apply(fecha_es)
+datos_grafica["FechaTxt"] = [
+    fecha_es(fila.Fecha, con_hora=fila.Fuente.startswith("FEWS"))
+    for fila in datos_grafica.itertuples()
+]
 st.caption(
     f"{len(datos_grafica):,} registros · "
     f"{fecha_es(datos_grafica['Fecha'].iloc[0])} – {fecha_es(datos_grafica['Fecha'].iloc[-1])}"
@@ -830,8 +839,11 @@ fig = go.Figure(go.Scatter(
     mode="lines+markers" if len(datos_grafica) <= 2000 else "lines",
     line=dict(color="#167f94", width=2.5),
     marker=dict(size=5, color="#167f94", line=dict(color="#fff", width=1)),
-    customdata=datos_grafica["FechaTxt"],
-    hovertemplate="<b>%{customdata}</b><br>Nivel: <b>%{y:.0f} cm</b><extra></extra>",
+    customdata=datos_grafica[["FechaTxt", "Fuente"]],
+    hovertemplate=(
+        "<b>%{customdata[0]}</b><br>Nivel: <b>%{y:.1f} cm</b>"
+        "<br>Fuente: %{customdata[1]}<extra></extra>"
+    ),
 ))
 estilos = {"amarilla": ("#d4a017", "Amarilla"), "naranja": ("#e8710a", "Naranja"), "roja": ("#c62828", "Roja")}
 y_vals = list(datos_grafica["Nivel_cm"])
@@ -878,7 +890,10 @@ except TypeError:   # versiones antiguas de Streamlit
 
 with st.expander("Consultar las últimas 30 lecturas"):
     recientes = df.tail(30).copy()
-    recientes["Fecha"] = recientes["Fecha"].dt.strftime("%Y-%m-%d")
+    recientes["Fecha"] = recientes.apply(
+        lambda fila: fecha_es(fila["Fecha"], con_hora=fila["Fuente"].startswith("FEWS")),
+        axis=1,
+    )
     st.dataframe(recientes, hide_index=True, width="stretch")
 
 with st.expander("Ver umbrales usados"):
@@ -889,7 +904,7 @@ with st.expander("Ver umbrales usados"):
 # ═══════════════════════════ COMPARTIR / DESCARGAR ═══════════════════════════
 st.divider()
 b1, b2 = st.columns(2)
-b1.download_button("Descargar histórico (CSV)", data=df.assign(Fecha=df["Fecha"].dt.strftime("%Y-%m-%d"))
+b1.download_button("Descargar histórico (CSV)", data=df.assign(Fecha=df["Fecha"].dt.strftime("%Y-%m-%d %H:%M"))
                    .to_csv(index=False).encode("utf-8"),
                    file_name="nivel_calamar.csv", mime="text/csv")
 if APP_URL:
@@ -903,7 +918,7 @@ st.markdown("---")
 st.caption(
     f"**Fuente:** IDEAM, Hidrología Nacional Diaria y exportaciones DHIME; "
     f"estación limnimétrica {ESTACION_CODIGO} – Calamar, Bolívar. "
-    "Se muestra el nivel medio diario en centímetros. "
+    "El histórico local muestra nivel medio diario y las últimas observaciones FEWS pueden ser intradiarias. "
     "El histórico local se intenta actualizar tres veces al día y la consulta FEWS se conserva "
     "en caché durante 15 minutos; el IDEAM puede publicar los datos con retraso y corregirlos después. "
     "Esta herramienta es informativa y **no reemplaza** los avisos "
