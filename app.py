@@ -165,6 +165,10 @@ st.markdown(
         background: #b7cbd4; transform: translateY(-50%);}
       .gauge-scale {position: absolute; left: 24px; width: 54px; text-align: right;
         color: #d7e5eb; font-size: 11px; transform: translateY(-50%);}
+      .gauge-reference {position: absolute; left: 124px; width: 84px;
+        border-top: 2px dashed #91aeba; transform: translateY(-50%);}
+      .gauge-reference-label {position: absolute; left: 216px; color: #b7cbd4;
+        font-size: 11px; transform: translateY(-50%);}
       .gauge-current {position: absolute; left: 120px; width: 89px;
         border-top: 2px solid #effdff; transform: translateY(-50%);}
       .gauge-value {position: absolute; left: 216px; padding: 6px 8px; border-radius: 6px;
@@ -474,6 +478,10 @@ def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> s
     alto_track = y_inferior - y_superior
     posicion = lambda valor: y_inferior - max(0, min(valor / escala_max_cm, 1)) * alto_track
     nivel_y = posicion(nivel_cm)
+    referencia_y = posicion(NIVEL_REFERENCIA_CM)
+    etiqueta_nivel_y = nivel_y
+    if abs(nivel_cm - NIVEL_REFERENCIA_CM) < 35:
+        etiqueta_nivel_y += -42 if nivel_cm >= NIVEL_REFERENCIA_CM else 42
 
     marcas_html = []
     for marca in range(0, escala_max_cm + 1, 100):
@@ -506,9 +514,11 @@ def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> s
         </div>
       </div>
       {''.join(marcas_html)}
+      <div class="gauge-reference" style="top:{referencia_y:.1f}px"></div>
+      <div class="gauge-reference-label" style="top:{referencia_y:.1f}px">950 cm</div>
       {''.join(alertas_html)}
       <div class="gauge-current" style="top:{nivel_y:.1f}px"></div>
-      <div class="gauge-value" style="top:{nivel_y:.1f}px">{nivel_cm / 100:.2f} m</div>
+      <div class="gauge-value" style="top:{etiqueta_nivel_y:.1f}px">{nivel_cm / 100:.2f} m</div>
     </div>
     """
 
