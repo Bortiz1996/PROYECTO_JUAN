@@ -71,7 +71,7 @@ PERIODOS_GRAFICA = {
 MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
 st.set_page_config(
-    page_title="JUAN | Observatorio del nivel del río Magdalena en Calamar",
+    page_title="JUAN",
     page_icon=JUAN_ICON_PATH,
     layout="wide",
 )

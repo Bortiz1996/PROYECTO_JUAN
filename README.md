@@ -13,7 +13,9 @@ Tablero público y gratuito con el nivel del río Magdalena en la estación limn
 └── .github/workflows/actualizar_datos.yml
 ```
 
-El encabezado presenta una tarjeta de perfil con portada, el retrato de JUAN, el nombre del proyecto destacado con una franja gráfica en tonos del río y el título «Nivel del río en Calamar». El icono también aparece en la pestaña del navegador.
+El encabezado presenta una tarjeta de perfil con portada, el retrato de JUAN, el nombre del proyecto destacado con una franja gráfica en tonos del río y el título «Nivel del río en Calamar». El navegador y la aplicación instalada usan el nombre `JUAN` y el icono de `assets/juan_icon.png`.
+
+Para actualizar un acceso directo instalado antes del cambio: en Android, mantenga presionado el icono de «Streamlit», seleccione «Información de la app» y desinstálelo; luego vuelva a abrir JUAN y repita «Instalar aplicación». En Chrome de escritorio, elimine el acceso directo y vuelva a instalar la pestaña. Los recursos PWA están en `static/manifest.webmanifest`.
 
 ## 1. Subir el proyecto a GitHub
 1. Cree un repositorio **público** (ej. `nivel-rio-calamar`) en <   >.
