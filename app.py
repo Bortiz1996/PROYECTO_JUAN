@@ -162,7 +162,8 @@ st.markdown(
         --fish-pass-start: calc(0px - var(--fish-width));
         --fish-cycle: 20s;
         animation: fish-pass-calm var(--fish-cycle) linear infinite;
-        animation-delay: var(--fish-delay);}
+        animation-delay: var(--fish-delay);
+        animation-fill-mode: backwards;}
       .gauge-fish svg {display: block; width: 100%; height: 100%; overflow: visible;
         animation: fish-body var(--fish-body-duration) ease-in-out infinite;
         animation-delay: var(--fish-body-delay);}
@@ -177,6 +178,10 @@ st.markdown(
       .gauge-fish--scared {filter: sepia(.75) saturate(1.7) drop-shadow(0 1px 2px rgba(0, 0, 0, .4));
         --fish-cycle: 12s;
         animation-name: fish-pass-panic;}
+      .gauge-fish--bocachico {--fish-rest-x: 0px;}
+      .gauge-fish--bagre {--fish-rest-x: 22px;}
+      .gauge-fish--mojarra {--fish-rest-x: 6px;}
+      .gauge-fish--sabalo {--fish-rest-x: 18px;}
       .gauge-fish-alert {position: absolute; top: -7px; right: -3px; display: none;
         width: 11px; height: 11px; border-radius: 50%; background: #fff3e0; color: #b5432f;
         font: 700 9px/11px Arial, sans-serif; text-align: center;}
@@ -242,8 +247,13 @@ st.markdown(
         background: #167f94; color: #fff; font-size: 13px; font-weight: 700;
         white-space: nowrap; transform: translateY(-50%);}
       @media (prefers-reduced-motion: reduce) {
-          .gauge-wave, .gauge-fish, .gauge-fish svg, .fish-tail, .fish-fin {
+          .gauge-wave, .gauge-fish svg, .fish-tail, .fish-fin {
             animation: none;
+          }
+          .gauge-fish {
+            animation: none;
+            transform: translateX(var(--fish-rest-x));
+            opacity: 1;
           }
       }
       @media (max-width: 640px) {
@@ -698,13 +708,14 @@ def crear_medidor_html(
         },
     ]
     indice_estado = {"calm": 0, "uncomfortable": 1, "scared": 2}[estado_peces]
+    fase_inicial = (3.5, 2.5, 1.8)[indice_estado]
     peces_html = []
     for pez in perfiles_peces:
         especie = pez["especie"]
         estilo_pez = (
             f"--fish-width:{pez['ancho']}px;--fish-height:{pez['alto']}px;"
             f"--fish-depth:{pez['profundidad']}%;"
-            f"--fish-delay:{pez['desfases'][indice_estado]}s;"
+            f"--fish-delay:{pez['desfases'][indice_estado] - fase_inicial}s;"
             f"--fish-tail-duration:{pez['colas'][indice_estado]}s;"
             f"--fish-fin-duration:{pez['aletas'][indice_estado]}s;"
             f"--fish-body-duration:{pez['cuerpos'][indice_estado]}s;"
