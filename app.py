@@ -5,6 +5,7 @@ Tablero ciudadano mobile-first. Datos: IDEAM, estación 29037020 (nivel medio di
 from __future__ import annotations
 
 import base64
+import io
 import math
 from pathlib import Path
 from urllib.parse import quote
@@ -27,6 +28,11 @@ JUAN_ICON_PATH = Path(__file__).parent / "assets" / "juan_icon.png"
 JUAN_COVER_PATH = Path(__file__).parent / "assets" / "juan_portada.webp"
 CSV_PATH = Path(__file__).with_name("nivel_calamar.csv")
 SUBZONAS_CUENCA_PATH = Path(__file__).parent / "assets" / "subzonas_magdalena_cauca.csv"
+FEWS_VISOR_URL = "https://fews.ideam.gov.co/visorfews/nacional"
+FEWS_NIVEL_URL = (
+    "https://fews.ideam.gov.co/visorfews/proxy/datos-ideam/s3-estacionesideam/"
+    "observaciones/historicos/csv/NV_MEDIA_D/0029037020-NV_MEDIA_D.csv"
+)
 METEO_URL = "https://api.open-meteo.com/v1/forecast"
 METEO_SESSION = requests.Session()
 METEO_SESSION.mount(
@@ -432,6 +438,32 @@ def cargar_datos(path: str, mtime: float) -> pd.DataFrame:
     return df.dropna(subset=["Fecha", "Nivel_cm"]).sort_values("Fecha").reset_index(drop=True)
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def cargar_nivel_fews_calamar() -> pd.DataFrame:
+    respuesta = requests.get(FEWS_NIVEL_URL, timeout=(10, 30))
+    respuesta.raise_for_status()
+    datos = pd.read_csv(io.StringIO(respuesta.text))
+
+    columnas = {"fechaObservacion", "valorObservado", "nivelAprobacion"}
+    if not columnas.issubset(datos.columns):
+        raise ValueError("FEWS devolvió un formato de serie no reconocido para Calamar.")
+
+    datos = datos.rename(
+        columns={
+            "fechaObservacion": "Fecha",
+            "valorObservado": "Nivel_cm",
+            "nivelAprobacion": "Estado",
+        }
+    )
+    datos["Fecha"] = pd.to_datetime(datos["Fecha"], errors="coerce")
+    datos["Nivel_cm"] = pd.to_numeric(datos["Nivel_cm"], errors="coerce")
+    datos = datos.dropna(subset=["Fecha", "Nivel_cm"])
+    datos = datos[datos["Nivel_cm"].between(0, 2000)]
+    if datos.empty:
+        raise ValueError("FEWS no devolvió lecturas válidas de nivel para Calamar.")
+    return datos.sort_values("Fecha").reset_index(drop=True)
+
+
 def calcular_umbrales(_df: pd.DataFrame) -> dict:
     """Devuelve únicamente las cotas oficiales configuradas, en centímetros."""
     oficiales = {"amarilla": UMBRAL_AMARILLA_CM, "naranja": UMBRAL_NARANJA_CM, "roja": UMBRAL_ROJA_CM}
@@ -606,12 +638,11 @@ if edad_dias > DIAS_MAX_SIN_DATOS:
         "puede no representar el nivel actual del río."
     )
 
-# ═════════════════════════════ MAPA ═════════════════════════════
-st.subheader("Ubicación del limnímetro")
+# ═════════════════════════════ VISOR FEWS ═════════════════════════════
+st.subheader("Visor FEWS IDEAM · Calamar")
 st.caption(
-    f"Estación {ESTACION_NOMBRE} · Código IDEAM {ESTACION_CODIGO} · "
-    f"{ESTACION_LATITUD:.6f}, {ESTACION_LONGITUD:.6f} · "
-    f"{ESTACION_ALTITUD_MSNM} m s. n. m."
+    "Ubicación de la estación y serie diaria de nivel medio publicada por FEWS IDEAM. "
+    "La publicación puede tener retraso; no es una medición instantánea."
 )
 mapa_estacion = pd.DataFrame(
     [
@@ -623,22 +654,92 @@ mapa_estacion = pd.DataFrame(
         }
     ]
 )
-st.map(
-    mapa_estacion,
-    latitude="lat",
-    longitude="lon",
-    color="#167f94",
-    size=120,
-    zoom=14,
-    height=420,
-)
-st.markdown(
-    "[Abrir en OpenStreetMap]"
-    f"(https://www.openstreetmap.org/?mlat={ESTACION_LATITUD}&mlon={ESTACION_LONGITUD}"
-    f"#map=15/{ESTACION_LATITUD}/{ESTACION_LONGITUD}) · "
-    "[Catálogo Nacional de Estaciones del IDEAM]"
-    "(https://dhime.ideam.gov.co/server/rest/services/CNE/Estaciones/MapServer/0)"
-)
+boton_actualizar, enlace_fews = st.columns(2)
+if boton_actualizar.button("Consultar FEWS ahora", key="consultar_fews"):
+    cargar_nivel_fews_calamar.clear()
+    st.rerun()
+enlace_fews.link_button("Abrir visor FEWS nacional", FEWS_VISOR_URL, width="stretch")
+
+datos_fews: pd.DataFrame | None = None
+try:
+    with st.spinner("Consultando la serie de nivel de FEWS IDEAM..."):
+        datos_fews = cargar_nivel_fews_calamar()
+except (requests.RequestException, pd.errors.ParserError, pd.errors.EmptyDataError, ValueError) as exc:
+    st.error(f"No se pudo cargar la serie FEWS de Calamar: {exc}")
+
+mapa_col, nivel_col = st.columns([1.2, 0.8], gap="large")
+with mapa_col:
+    st.caption(
+        f"Estación {ESTACION_NOMBRE} · Código IDEAM {ESTACION_CODIGO} · "
+        f"{ESTACION_LATITUD:.6f}, {ESTACION_LONGITUD:.6f} · "
+        f"{ESTACION_ALTITUD_MSNM} m s. n. m."
+    )
+    st.map(
+        mapa_estacion,
+        latitude="lat",
+        longitude="lon",
+        color="#167f94",
+        size=120,
+        zoom=14,
+        height=420,
+    )
+with nivel_col:
+    if datos_fews is not None:
+        lectura_fews = datos_fews.iloc[-1]
+        st.metric("Último nivel diario FEWS", f"{lectura_fews['Nivel_cm']:.1f} cm")
+        st.caption(f"Fecha de lectura: {fecha_es(lectura_fews['Fecha'])}")
+        estado_fews = lectura_fews["Estado"]
+        if pd.notna(estado_fews) and str(estado_fews).strip():
+            st.caption(f"Clasificación publicada: {estado_fews}")
+        st.caption("Serie: nivel medio diario · unidad: centímetros.")
+    st.markdown(
+        "[Abrir ubicación en OpenStreetMap]"
+        f"(https://www.openstreetmap.org/?mlat={ESTACION_LATITUD}&mlon={ESTACION_LONGITUD}"
+        f"#map=15/{ESTACION_LATITUD}/{ESTACION_LONGITUD}) · "
+        "[Catálogo Nacional de Estaciones del IDEAM]"
+        "(https://dhime.ideam.gov.co/server/rest/services/CNE/Estaciones/MapServer/0)"
+    )
+
+if datos_fews is not None:
+    st.caption(
+        f"{len(datos_fews):,} registros FEWS · "
+        f"{fecha_es(datos_fews['Fecha'].iloc[0])} – "
+        f"{fecha_es(datos_fews['Fecha'].iloc[-1])}"
+    )
+    fig_fews = go.Figure(
+        go.Scatter(
+            x=datos_fews["Fecha"],
+            y=datos_fews["Nivel_cm"],
+            mode="lines+markers" if len(datos_fews) <= 2000 else "lines",
+            line=dict(color="#167f94", width=2.5),
+            marker=dict(size=5, color="#167f94"),
+            customdata=datos_fews["Estado"],
+            hovertemplate=(
+                "<b>%{x|%d %b %Y}</b><br>Nivel: <b>%{y:.1f} cm</b>"
+                "<br>Clasificación: %{customdata}<extra></extra>"
+            ),
+        )
+    )
+    fig_fews.update_layout(
+        height=360,
+        margin=dict(l=8, r=12, t=20, b=8),
+        showlegend=False,
+        hovermode="x",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#ffffff",
+        font=dict(family="Arial, sans-serif", color="#455d6b"),
+        xaxis=dict(gridcolor="#edf1f3", zeroline=False),
+        yaxis=dict(title="Nivel medio diario (cm)", gridcolor="#edf1f3", zeroline=False),
+    )
+    st.plotly_chart(
+        fig_fews,
+        width="stretch",
+        config={"displayModeBar": False},
+    )
+    st.caption(
+        f"Fuente: [FEWS IDEAM]({FEWS_VISOR_URL}). "
+        "La consulta se conserva en caché durante 15 minutos."
+    )
 
 # ═══════════════════════ METEOROLOGÍA Y TENDENCIA ═══════════════════════
 st.subheader("Lluvia aguas arriba y tendencia del río · próximas 24 horas")
@@ -803,7 +904,8 @@ st.caption(
     f"**Fuente:** IDEAM, Hidrología Nacional Diaria y exportaciones DHIME; "
     f"estación limnimétrica {ESTACION_CODIGO} – Calamar, Bolívar. "
     "Se muestra el nivel medio diario en centímetros. "
-    "La serie hidrológica local se actualiza cada 6 horas, pero el IDEAM puede publicarla con retraso "
-    "y corregirla después. Esta herramienta es informativa y **no reemplaza** los avisos "
+    "El histórico local se intenta actualizar tres veces al día y la consulta FEWS se conserva "
+    "en caché durante 15 minutos; el IDEAM puede publicar los datos con retraso y corregirlos después. "
+    "Esta herramienta es informativa y **no reemplaza** los avisos "
     "oficiales del IDEAM, la UNGRD ni del Consejo Municipal de Gestión del Riesgo."
 )
