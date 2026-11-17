@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123d53">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="JUAN">
+    <title>JUAN · Nivel del río Magdalena en Calamar</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #123d53;
+      }
+
+      iframe {
+        display: block;
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe
+      src="https://juan-observatorio.streamlit.app/?embed=true"
+      title="JUAN · Nivel del río Magdalena en Calamar"
+      allow="fullscreen"
+    ></iframe>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js").catch((error) => {
+            console.error("No se pudo registrar el service worker de JUAN:", error);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
