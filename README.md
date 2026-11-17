@@ -3,7 +3,7 @@
 Tablero público y gratuito con el nivel del río Magdalena en la estación limnimétrica **CALAMAR [29037020]** del IDEAM. Se actualiza solo cada 6 horas (GitHub Actions) y se ve bien en el celular (Streamlit).
 
 ```
-├── assets/juan_icon.jpeg              # icono y marca JUAN
+├── assets/juan_icon.png               # retrato de JUAN con fondo transparente
 ├── assets/juan_portada.webp            # fotografía de fondo del perfil
 ├── scraper_ideam.py                    # descarga, limpia y combina datos
 ├── nivel_calamar.csv                   # histórico limpio (lo genera el scraper)
@@ -13,7 +13,7 @@ Tablero público y gratuito con el nivel del río Magdalena en la estación limn
 └── .github/workflows/actualizar_datos.yml
 ```
 
-El encabezado presenta una tarjeta de perfil con portada, imagen centrada, nombre «JUAN» y título «Nivel del río en Calamar». El icono también aparece en la pestaña del navegador.
+El encabezado presenta una tarjeta de perfil con portada, el retrato de JUAN, el nombre del proyecto destacado, la indicación «Proyecto en homenaje» y el título «Nivel del río en Calamar». El icono también aparece en la pestaña del navegador.
 
 ## 1. Subir el proyecto a GitHub
 1. Cree un repositorio **público** (ej. `nivel-rio-calamar`) en <   >.

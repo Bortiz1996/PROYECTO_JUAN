@@ -22,7 +22,7 @@ ESTACION_NOMBRE = "Calamar, Bolívar"
 ESTACION_LATITUD = 10.243275
 ESTACION_LONGITUD = -74.915017
 ESTACION_ALTITUD_MSNM = 8
-JUAN_ICON_PATH = Path(__file__).parent / "assets" / "juan_icon.jpeg"
+JUAN_ICON_PATH = Path(__file__).parent / "assets" / "juan_icon.png"
 JUAN_COVER_PATH = Path(__file__).parent / "assets" / "juan_portada.webp"
 CSV_PATH = Path(__file__).with_name("nivel_calamar.csv")
 SUBZONAS_CUENCA_PATH = Path(__file__).parent / "assets" / "subzonas_magdalena_cauca.csv"
@@ -116,7 +116,12 @@ st.markdown(
         border: 5px solid #fff; border-radius: 50%;
         box-shadow: 0 4px 14px rgba(20, 45, 60, .18);}
       .profile-content {padding: 78px 24px 24px; text-align: center;}
-      .profile-content h1 {font-size: 2.8rem !important; margin: 0 !important;}
+      .profile-content h1 {color: #122a3a !important; font-size: 2.65rem !important;
+        font-weight: 800 !important; letter-spacing: .16em !important;
+        margin: 0 !important; padding-left: .16em;}
+      .profile-honor {color: #527080 !important; font-size: .72rem;
+        font-weight: 700; letter-spacing: .12em; margin: 0 0 .45rem !important;
+        text-transform: uppercase;}
       .profile-content h2 {font-size: 1.35rem !important; margin: .1rem 0 .55rem !important;}
       .profile-content p {color: #405868; margin: 0;}
       .reading-card {background: #fff; border: 1px solid #dfe7ec; border-radius: 14px;
@@ -528,9 +533,10 @@ st.markdown(
     f"""
     <section class="profile-card" aria-label="Perfil del proyecto JUAN">
       <div class="profile-cover" style="--cover-image: url('data:image/webp;base64,{cover_data}')"></div>
-      <img class="profile-avatar" src="data:image/jpeg;base64,{icon_data}" alt="Imagen de JUAN">
+      <img class="profile-avatar" src="data:image/png;base64,{icon_data}" alt="Imagen de JUAN">
       <div class="profile-content">
         <h1>JUAN</h1>
+        <p class="profile-honor">Proyecto en homenaje</p>
         <h2>Nivel del río en Calamar</h2>
         <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel medio diario</p>
       </div>
