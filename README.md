@@ -1,6 +1,6 @@
 # JUAN — Nivel del río Magdalena en Calamar (Bolívar)
 
-Tablero público y gratuito con el nivel del río Magdalena en la estación limnimétrica **CALAMAR [29037020]** del IDEAM. Los datos se actualizan diariamente desde GitHub Actions, programado para las 7:17 a. m. (hora de Colombia); GitHub puede retrasar las ejecuciones programadas. Se ve bien en el celular (Streamlit).
+Tablero público y gratuito con el nivel del río Magdalena en la estación limnimétrica **CALAMAR [29037020]** del IDEAM. Los datos se actualizan desde GitHub Actions, programado diariamente para las 7:15 a. m., 12:15 p. m. y 7:15 p. m. (hora de Colombia); GitHub puede retrasar las ejecuciones programadas. Se ve bien en el celular (Streamlit).
 
 ```
 ├── assets/juan_icon.png               # retrato de JUAN con fondo transparente
