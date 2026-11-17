@@ -156,6 +156,70 @@ st.markdown(
         border-radius: 48%; background: #16a6bd; animation: gauge-drift 4.8s ease-in-out infinite;}
       .gauge-wave-back {top: -5px; left: -55%; height: 16px; opacity: .55;
         background: #42c7d2; animation: gauge-drift-back 6.4s ease-in-out infinite;}
+      .gauge-fish {position: absolute; z-index: 2; left: 0; bottom: var(--fish-depth);
+        display: block; width: var(--fish-width); height: var(--fish-height);
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
+        --fish-pass-start: calc(0px - var(--fish-width));
+        --fish-cycle: 20s;
+        animation: fish-pass-calm var(--fish-cycle) linear infinite;
+        animation-delay: var(--fish-delay);}
+      .gauge-fish svg {display: block; width: 100%; height: 100%; overflow: visible;
+        animation: fish-body var(--fish-body-duration) ease-in-out infinite;
+        animation-delay: var(--fish-body-delay);}
+      .fish-tail {transform-box: fill-box; transform-origin: right center;
+        animation: fish-tail var(--fish-tail-duration) ease-in-out infinite alternate;}
+      .fish-fin {transform-box: fill-box; transform-origin: center bottom;
+        animation: fish-fin var(--fish-fin-duration) ease-in-out infinite alternate;
+        animation-delay: var(--fish-fin-delay);}
+      .gauge-fish--uncomfortable {filter: grayscale(.45) drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
+        --fish-cycle: 16s;
+        animation-name: fish-pass-uncomfortable;}
+      .gauge-fish--scared {filter: sepia(.75) saturate(1.7) drop-shadow(0 1px 2px rgba(0, 0, 0, .4));
+        --fish-cycle: 12s;
+        animation-name: fish-pass-panic;}
+      .gauge-fish-alert {position: absolute; top: -7px; right: -3px; display: none;
+        width: 11px; height: 11px; border-radius: 50%; background: #fff3e0; color: #b5432f;
+        font: 700 9px/11px Arial, sans-serif; text-align: center;}
+      .gauge-fish--scared .gauge-fish-alert {display: block;}
+      @keyframes fish-pass-calm {
+        0%, 100% {transform: translateX(64px) translateY(1px); opacity: 0;}
+        5% {transform: translateX(var(--fish-pass-start)) translateY(0); opacity: 0;}
+        7% {transform: translateX(var(--fish-pass-start)) translateY(-1px); opacity: 1;}
+        28% {transform: translateX(64px) translateY(1px); opacity: 1;}
+        30% {transform: translateX(64px) translateY(1px); opacity: 0;}
+      }
+      @keyframes fish-pass-uncomfortable {
+        0%, 100% {transform: translateX(64px) translateY(1px); opacity: 0;}
+        3% {transform: translateX(var(--fish-pass-start)) translateY(0); opacity: 0;}
+        5% {transform: translateX(var(--fish-pass-start)) translateY(-1px); opacity: 1;}
+        12% {transform: translateX(calc(var(--fish-pass-start) + 24px)) translateY(-4px) rotate(-8deg);}
+        19% {transform: translateX(calc(var(--fish-pass-start) + 50px)) translateY(4px) rotate(8deg);}
+        26% {transform: translateX(64px) translateY(-2px) rotate(-5deg); opacity: 1;}
+        28% {transform: translateX(64px) translateY(-2px); opacity: 0;}
+      }
+      @keyframes fish-pass-panic {
+        0%, 100% {transform: translateX(64px) translateY(1px); opacity: 0;}
+        3% {transform: translateX(var(--fish-pass-start)) translateY(0); opacity: 0;}
+        5% {transform: translateX(var(--fish-pass-start)) translateY(-1px); opacity: 1;}
+        9% {transform: translateX(calc(var(--fish-pass-start) + 26px)) translateY(-6px) rotate(-13deg);}
+        12% {transform: translateX(calc(var(--fish-pass-start) + 23px)) translateY(5px) rotate(12deg);}
+        17% {transform: translateX(calc(var(--fish-pass-start) + 54px)) translateY(-5px) rotate(-11deg);}
+        20% {transform: translateX(calc(var(--fish-pass-start) + 50px)) translateY(6px) rotate(13deg);}
+        25% {transform: translateX(64px) translateY(-3px) rotate(-8deg); opacity: 1;}
+        27% {transform: translateX(64px) translateY(-3px); opacity: 0;}
+      }
+      @keyframes fish-body {
+        0%, 100% {transform: translateY(0) rotate(0);}
+        50% {transform: translateY(-1px) rotate(-3deg);}
+      }
+      @keyframes fish-tail {
+        from {transform: rotate(-28deg);}
+        to {transform: rotate(28deg);}
+      }
+      @keyframes fish-fin {
+        from {transform: rotate(-12deg) scaleY(.9);}
+        to {transform: rotate(12deg) scaleY(1.08);}
+      }
       @keyframes gauge-drift {
         0%, 100% {transform: translateX(-8%) rotate(-2deg);}
         50% {transform: translateX(8%) rotate(2deg);}
@@ -178,7 +242,9 @@ st.markdown(
         background: #167f94; color: #fff; font-size: 13px; font-weight: 700;
         white-space: nowrap; transform: translateY(-50%);}
       @media (prefers-reduced-motion: reduce) {
-        .gauge-wave {animation: none;}
+          .gauge-wave, .gauge-fish, .gauge-fish svg, .fish-tail, .fish-fin {
+            animation: none;
+          }
       }
       @media (max-width: 640px) {
         .block-container {padding: 1.25rem 1rem 2rem;}
@@ -504,7 +570,21 @@ def banner(estado: str) -> None:
         )
 
 
-def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> str:
+def clasificar_estado_peces(nivel_cm: float, cambio_cm: float) -> tuple[str, str, str]:
+    if nivel_cm > 900:
+        return "scared", "asustados", "el nivel supera 900 cm"
+    if cambio_cm < 0:
+        return "uncomfortable", "incómodos", "el nivel está bajando"
+    return "calm", "tranquilos", "el nivel no está bajando"
+
+
+def crear_medidor_html(
+    nivel_cm: float,
+    escala_max_cm: int,
+    umbrales: dict,
+    estado_peces: str,
+    estado_peces_texto: str,
+) -> str:
     y_superior = 74
     y_inferior = 448
     alto_track = y_inferior - y_superior
@@ -535,14 +615,116 @@ def crear_medidor_html(nivel_cm: float, escala_max_cm: int, umbrales: dict) -> s
             f'border-top:2px dotted {color};transform:translateY(-50%)"></div>'
         )
 
+    perfiles_peces = [
+        {
+            "especie": "bocachico",
+            "ancho": 40,
+            "alto": 20,
+            "profundidad": 68,
+            "desfases": (0, 0, 0),
+            "colas": (0.38, 0.18, 0.08),
+            "aletas": (0.66, 0.32, 0.14),
+            "cuerpos": (1.7, 0.8, 0.38),
+            "svg": """
+              <svg viewBox="0 0 48 24" aria-hidden="true">
+                <path class="fish-tail" d="M9 12 2 5v14l7-7Z" fill="#dc8e43"/>
+                <path class="fish-body" d="M7 12C14 4 32 5 42 12 32 19 14 20 7 12Z" fill="#f2c65d"/>
+                <path class="fish-fin" d="m17 7 5-5 6 5Z" fill="#e99d49"/>
+                <path class="fish-fin" d="m19 17 5 5 5-5Z" fill="#e99d49"/>
+                <path d="M19 8v8m5-9v10m5-9v8" stroke="#d69345" stroke-width="1"/>
+                <circle cx="36" cy="10" r="1.2" fill="#17384a"/>
+              </svg>
+            """,
+        },
+        {
+            "especie": "bagre",
+            "ancho": 44,
+            "alto": 18,
+            "profundidad": 51,
+            "desfases": (4.8, 3.9, 2.9),
+            "colas": (0.52, 0.22, 0.09),
+            "aletas": (0.82, 0.36, 0.16),
+            "cuerpos": (2.1, 0.9, 0.42),
+            "svg": """
+              <svg viewBox="0 0 48 24" aria-hidden="true">
+                <path class="fish-tail" d="M9 12 2 6v12l7-6Z" fill="#4a8f91"/>
+                <path class="fish-body" d="M8 12C15 6 34 7 41 12 34 17 15 18 8 12Z" fill="#8fc2b4"/>
+                <path class="fish-fin" d="m17 8 5-5 5 5Z" fill="#477f83"/>
+                <path class="fish-fin" d="m20 16 4 5 4-5Z" fill="#477f83"/>
+                <path d="M36 10Q42 6 47 7M36 14Q42 18 47 17" fill="none" stroke="#d8d2a7" stroke-width="1"/>
+                <circle cx="36" cy="10" r="1.1" fill="#102b3b"/>
+              </svg>
+            """,
+        },
+        {
+            "especie": "mojarra",
+            "ancho": 34,
+            "alto": 22,
+            "profundidad": 35,
+            "desfases": (9.6, 7.8, 5.8),
+            "colas": (0.3, 0.16, 0.07),
+            "aletas": (0.58, 0.28, 0.13),
+            "cuerpos": (1.5, 0.72, 0.34),
+            "svg": """
+              <svg viewBox="0 0 48 24" aria-hidden="true">
+                <path class="fish-tail" d="M11 12 3 6v12l8-6Z" fill="#e98650"/>
+                <ellipse class="fish-body" cx="25" cy="12" rx="15" ry="9" fill="#f5bd68"/>
+                <path class="fish-fin" d="m14 7 3-5 4 5 4-6 4 6 4-4 3 7Z" fill="#dc8050"/>
+                <path class="fish-fin" d="m21 18 5 5 4-6Z" fill="#e98650"/>
+                <path d="M20 5v14m6-14v14m6-12v10" stroke="#db9456" stroke-width="1"/>
+                <circle cx="35" cy="9" r="1.2" fill="#17384a"/>
+              </svg>
+            """,
+        },
+        {
+            "especie": "sabalo",
+            "ancho": 45,
+            "alto": 17,
+            "profundidad": 20,
+            "desfases": (14.4, 11.7, 8.7),
+            "colas": (0.46, 0.2, 0.085),
+            "aletas": (0.72, 0.34, 0.15),
+            "cuerpos": (1.9, 0.84, 0.4),
+            "svg": """
+              <svg viewBox="0 0 48 24" aria-hidden="true">
+                <path class="fish-tail" d="M9 12 2 4v16l7-8Z" fill="#6ba6ad"/>
+                <path class="fish-body" d="M7 12C16 6 35 7 43 12 35 17 16 18 7 12Z" fill="#b9d6c9"/>
+                <path class="fish-fin" d="m20 8 4-5 5 5Z" fill="#6ba6ad"/>
+                <path class="fish-fin" d="m23 16 4 5 4-5Z" fill="#6ba6ad"/>
+                <path d="M17 12h19m-13-3v6m6-6v6" stroke="#6b9fa4" stroke-width=".9"/>
+                <circle cx="37" cy="10" r="1" fill="#17384a"/>
+              </svg>
+            """,
+        },
+    ]
+    indice_estado = {"calm": 0, "uncomfortable": 1, "scared": 2}[estado_peces]
+    peces_html = []
+    for pez in perfiles_peces:
+        especie = pez["especie"]
+        estilo_pez = (
+            f"--fish-width:{pez['ancho']}px;--fish-height:{pez['alto']}px;"
+            f"--fish-depth:{pez['profundidad']}%;"
+            f"--fish-delay:{pez['desfases'][indice_estado]}s;"
+            f"--fish-tail-duration:{pez['colas'][indice_estado]}s;"
+            f"--fish-fin-duration:{pez['aletas'][indice_estado]}s;"
+            f"--fish-body-duration:{pez['cuerpos'][indice_estado]}s;"
+        )
+        peces_html.append(
+            f'<span class="gauge-fish gauge-fish--{estado_peces} gauge-fish--{especie}" '
+            f'style="{estilo_pez}" aria-hidden="true">{pez["svg"]}'
+            '<span class="gauge-fish-alert">!</span></span>'
+        )
+    peces_html = "".join(peces_html)
+
     return f"""
-    <div class="gauge-panel" role="img" aria-label="Medidor del nivel del río: {nivel_cm:.1f} centímetros">
+    <div class="gauge-panel" role="img" aria-label="Medidor del nivel del río: {nivel_cm:.1f} centímetros. Peces {estado_peces_texto}.">
       <div class="gauge-title">NIVEL DEL RÍO</div>
       <div class="gauge-subtitle">CALAMAR · BOLÍVAR · IDEAM {ESTACION_CODIGO}</div>
       <div class="gauge-track">
         <div class="gauge-water" style="height:{max(0, min(nivel_cm / escala_max_cm, 1)):.4%}">
           <span class="gauge-wave gauge-wave-back"></span>
           <span class="gauge-wave"></span>
+          {peces_html}
         </div>
       </div>
       {''.join(marcas_html)}
@@ -565,7 +747,7 @@ st.markdown(
       <img class="profile-avatar" src="data:image/png;base64,{icon_data}" alt="Imagen de JUAN">
       <div class="profile-content">
         <h1>JUAN</h1>
-        <h2>Nivel del río en Calamar</h2>
+        <h2>OBSERVATORIO MONITOREO DEL NIVEL DE RIO MAGDALENA EN CALAMAR BOLIVAR</h2>
         <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel observado</p>
       </div>
     </section>
@@ -604,6 +786,7 @@ previo = df.iloc[-2]
 dias_diff = (fecha_ult - previo["Fecha"]).days
 delta_cm = nivel_cm - float(previo["Nivel_cm"])
 ref_txt = "el día anterior" if dias_diff == 1 else f"el {fecha_es(previo['Fecha'])}"
+estado_peces, estado_peces_texto, motivo_peces = clasificar_estado_peces(nivel_cm, delta_cm)
 
 edad_dias = (pd.Timestamp.now().normalize() - fecha_ult.normalize()).days
 umbrales = calcular_umbrales(df)
@@ -617,10 +800,13 @@ escala_max_cm = max(1000, int(math.ceil(mayor_referencia / 100) * 100))
 col_medidor, col_lectura = st.columns([0.9, 1.1], gap="large")
 with col_medidor:
     st.markdown(
-        crear_medidor_html(nivel_cm, escala_max_cm, umbrales),
+        crear_medidor_html(
+            nivel_cm, escala_max_cm, umbrales, estado_peces, estado_peces_texto
+        ),
         unsafe_allow_html=True,
     )
     st.caption(f"Escala visual: 0–{escala_max_cm / 100:.0f} m.")
+    st.caption(f"Peces {estado_peces_texto}: {motivo_peces}. Animación ilustrativa.")
 
 with col_lectura:
     fecha_texto = fecha_es(ts_ult, con_hora=pd.notna(ultimo["Ultima_lectura"]))
