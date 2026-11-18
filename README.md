@@ -31,9 +31,9 @@ Para instalar JUAN con su propio nombre e icono, use la PWA de GitHub Pages en `
 
 ## 3. Desplegar en Streamlit Community Cloud
 1. Entre a <https://share.streamlit.io> con su cuenta de GitHub.
-2. **Create app** → seleccione el repositorio, rama `main`, archivo principal `app.py`.
-3. Pulse **Deploy**. Cuando termine, copie la URL pública y péguela en la variable `APP_URL` de `app.py` (activa el botón de WhatsApp).
-4. Comparta el enlace con la comunidad. Cada commit del bot actualiza la app automáticamente.
+2. **Create app** → seleccione el repositorio `ing-ambiente-proyect1001/PROYECTO_JUAN`, rama `main`, archivo principal `app.py`.
+3. Pulse **Deploy** y confirme que `docs/index.html` incruste la URL generada por Streamlit.
+4. El enlace oficial para compartir es <https://ing-ambiente-proyect1001.github.io/PROYECTO_JUAN/>. Cada commit de código debe desplegarse en Streamlit; GitHub Pages solo muestra esa app incrustada.
 
 > Streamlit Cloud «duerme» las apps sin visitas por unas horas; al abrir el enlace aparece un botón para despertarla (tarda segundos).
 

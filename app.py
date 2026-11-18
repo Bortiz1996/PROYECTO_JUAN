@@ -53,8 +53,8 @@ METEO_LONGITUD = -74.91574
 METEO_ZONA_HORARIA = "America/Bogota"
 HORIZONTE_METEO_HORAS = 24
 
-# URL pública de la app (pegar aquí la de Streamlit Cloud para el botón de WhatsApp).
-APP_URL = ""
+# Enlace oficial del observatorio para compartir.
+APP_URL = "https://ing-ambiente-proyect1001.github.io/PROYECTO_JUAN/"
 
 # ── Umbrales de alerta en cm. Solo configurar cotas oficiales verificadas.
 UMBRAL_AMARILLA_CM: float | None = None
