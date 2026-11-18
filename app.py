@@ -480,6 +480,16 @@ def aplicar_estilo_grafica(fig: go.Figure) -> None:
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="#ffffff",
         font=dict(family="Arial, sans-serif", color="#455d6b", size=12),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            x=1,
+            y=1.02,
+            xanchor="right",
+            yanchor="bottom",
+            font=dict(size=11, color="#455d6b"),
+            bgcolor="rgba(255,255,255,0.75)",
+        ),
     )
     estilo_ejes = {
         "gridcolor": "#e6ebee",
@@ -492,6 +502,9 @@ def aplicar_estilo_grafica(fig: go.Figure) -> None:
         "tickcolor": "#aebbc2",
         "tickwidth": 0.8,
         "ticklen": 3,
+        "showticklabels": True,
+        "tickfont": dict(size=11, color="#455d6b"),
+        "automargin": True,
     }
     fig.update_xaxes(**estilo_ejes)
     fig.update_yaxes(**estilo_ejes)
@@ -502,7 +515,7 @@ def crear_grafica_pronostico_cuenca(horas: pd.DataFrame) -> go.Figure:
         go.Scatter(
             x=horas["FechaHora"],
             y=horas["Precipitacion_mm"].cumsum(),
-            name="Lluvia media acumulada",
+            name="Lluvia acumulada (mm)",
             mode="lines+markers",
             line=dict(color="#167f94", width=1.2),
             marker=dict(size=3),
@@ -513,9 +526,8 @@ def crear_grafica_pronostico_cuenca(horas: pd.DataFrame) -> go.Figure:
     )
     fig.update_layout(
         height=300,
-        margin=dict(l=8, r=8, t=18, b=8),
+        margin=dict(l=64, r=20, t=48, b=40),
         hovermode="x unified",
-        legend=dict(orientation="h", y=1.12, x=0),
     )
     fig.update_xaxes(
         title_text="Hora local",
@@ -944,6 +956,7 @@ if datos_fews is not None:
         go.Scatter(
             x=datos_fews["Fecha"],
             y=datos_fews["Nivel_cm"],
+            name="Nivel observado FEWS (cm)",
             mode="lines+markers" if len(datos_fews) <= 2000 else "lines",
             line=dict(color="#167f94", width=1.2),
             marker=dict(size=3, color="#167f94"),
@@ -956,8 +969,7 @@ if datos_fews is not None:
     )
     fig_fews.update_layout(
         height=360,
-        margin=dict(l=8, r=12, t=20, b=8),
-        showlegend=False,
+        margin=dict(l=60, r=20, t=48, b=40),
         hovermode="x",
         yaxis=dict(title="Nivel observado (cm)"),
     )
@@ -1063,6 +1075,7 @@ st.caption(
 
 fig = go.Figure(go.Scatter(
     x=datos_grafica["Fecha"], y=datos_grafica["Nivel_cm"],
+    name="Nivel observado (cm)",
     mode="lines+markers" if len(datos_grafica) <= 2000 else "lines",
     line=dict(color="#167f94", width=1.2),
     marker=dict(size=3, color="#167f94", line=dict(color="#fff", width=0.6)),
@@ -1094,7 +1107,7 @@ fig.add_hline(
 )
 rango = max(y_vals) - min(y_vals)
 fig.update_layout(
-    height=390, margin=dict(l=8, r=12, t=24, b=8), showlegend=False,
+    height=390, margin=dict(l=60, r=20, t=48, b=40),
     hovermode="x", dragmode=False, hoverlabel=dict(font_size=16),
     xaxis=dict(
         fixedrange=True,
