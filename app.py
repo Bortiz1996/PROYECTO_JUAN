@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import base64
 import io
-import math
+import random
+from functools import lru_cache
 from itertools import combinations
 from pathlib import Path
 from statistics import median
@@ -26,6 +27,7 @@ ESTACION_LATITUD = 10.243275
 ESTACION_LONGITUD = -74.915017
 ESTACION_ALTITUD_MSNM = 8
 NIVEL_REFERENCIA_CM = 950
+NIVEL_MURALLA_CM = 1000   # cota de la muralla: el nivel 10 m llega hasta ella
 JUAN_ICON_PATH = Path(__file__).parent / "assets" / "juan_icon.png"
 JUAN_COVER_PATH = Path(__file__).parent / "assets" / "juan_portada.webp"
 CSV_PATH = Path(__file__).with_name("nivel_calamar.csv")
@@ -143,82 +145,88 @@ st.markdown(
         color: #536b79; line-height: 1.55; padding: 1rem 1.15rem;}
       .forecast-value {color: #17384a; font-size: 1.45rem; font-weight: 700; margin: .25rem 0;}
       .forecast-caveat {color: #607989; font-size: .8rem; margin-bottom: 0;}
-      .gauge-panel {position: relative; width: min(100%, 340px); height: 500px; margin: 0 auto;
-        overflow: hidden; border-radius: 16px; background: #102b3b; color: #d7e5eb;
-        font-family: Arial, sans-serif;}
-      .gauge-title {position: absolute; top: 20px; left: 23px; font-size: 12px;
-        font-weight: 700; letter-spacing: 2px;}
-      .gauge-subtitle {position: absolute; top: 39px; left: 23px; color: #91aeba;
-        font-size: 10px; letter-spacing: 1px;}
-      .gauge-track {position: absolute; top: 74px; bottom: 52px; left: 132px; width: 64px;
-        overflow: hidden; border: 1px solid #527284; border-radius: 16px; background: #1b3d4e;}
-      .gauge-water {position: absolute; right: 0; bottom: 0; left: 0; overflow: visible;
-        background: #087f98;}
-      .gauge-wave {position: absolute; top: -8px; left: -50%; width: 200%; height: 18px;
-        border-radius: 48%; background: #16a6bd; animation: gauge-drift 4.8s ease-in-out infinite;}
-      .gauge-wave-back {top: -5px; left: -55%; height: 16px; opacity: .55;
-        background: #42c7d2; animation: gauge-drift-back 6.4s ease-in-out infinite;}
-      .gauge-fish {position: absolute; z-index: 2; left: 0; bottom: var(--fish-depth);
-        display: block; width: var(--fish-width); height: var(--fish-height);
-        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
-        --fish-pass-start: calc(0px - var(--fish-width));
-        --fish-cycle: 20s;
-        animation: fish-pass-calm var(--fish-cycle) linear infinite;
-        animation-delay: var(--fish-delay);
-        animation-fill-mode: backwards;}
-      .gauge-fish svg {display: block; width: 100%; height: 100%; overflow: visible;
-        animation: fish-body var(--fish-body-duration) ease-in-out infinite;
-        animation-delay: var(--fish-body-delay);}
-      .fish-tail {transform-box: fill-box; transform-origin: right center;
-        animation: fish-tail var(--fish-tail-duration) ease-in-out infinite alternate;}
-      .fish-fin {transform-box: fill-box; transform-origin: center bottom;
-        animation: fish-fin var(--fish-fin-duration) ease-in-out infinite alternate;
-        animation-delay: var(--fish-fin-delay);}
-      .gauge-fish--uncomfortable {filter: grayscale(.45) drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
-        --fish-cycle: 16s;
-        animation-name: fish-pass-uncomfortable;}
-      .gauge-fish--scared {filter: sepia(.75) saturate(1.7) drop-shadow(0 1px 2px rgba(0, 0, 0, .4));
-        --fish-cycle: 12s;
-        animation-name: fish-pass-panic;}
-      .gauge-fish--bocachico {--fish-rest-x: 0px;}
-      .gauge-fish--bagre {--fish-rest-x: 22px;}
-      .gauge-fish--mojarra {--fish-rest-x: 6px;}
-      .gauge-fish--sabalo {--fish-rest-x: 18px;}
-      .gauge-fish-alert {position: absolute; top: -7px; right: -3px; display: none;
-        width: 11px; height: 11px; border-radius: 50%; background: #fff3e0; color: #b5432f;
-        font: 700 9px/11px Arial, sans-serif; text-align: center;}
-      .gauge-fish--scared .gauge-fish-alert {display: block;}
-      @keyframes fish-pass-calm {
-        0%, 100% {transform: translateX(64px) translateY(1px); opacity: 0;}
-        5% {transform: translateX(var(--fish-pass-start)) translateY(0); opacity: 0;}
-        7% {transform: translateX(var(--fish-pass-start)) translateY(-1px); opacity: 1;}
-        28% {transform: translateX(64px) translateY(1px); opacity: 1;}
-        30% {transform: translateX(64px) translateY(1px); opacity: 0;}
+      .gauge-panel {position: relative; width: min(100%, 340px); aspect-ratio: 340 / 500;
+        margin: 0 auto; overflow: hidden; border-radius: 16px; background: #1b5a85;
+        font-family: Arial, sans-serif; box-shadow: 0 8px 26px rgba(20, 45, 60, .14);}
+      .gauge-scene {display: block; width: 100%; height: 100%;}
+      .jn-ola {animation: jn-ola var(--dur, 9s) linear infinite; animation-delay: var(--delay, 0s);}
+      @keyframes jn-ola {
+        from {transform: translateX(0);}
+        to {transform: translateX(-340px);}
       }
-      @keyframes fish-pass-uncomfortable {
-        0%, 100% {transform: translateX(64px) translateY(1px); opacity: 0;}
-        3% {transform: translateX(var(--fish-pass-start)) translateY(0); opacity: 0;}
-        5% {transform: translateX(var(--fish-pass-start)) translateY(-1px); opacity: 1;}
-        12% {transform: translateX(calc(var(--fish-pass-start) + 24px)) translateY(-4px) rotate(-8deg);}
-        19% {transform: translateX(calc(var(--fish-pass-start) + 50px)) translateY(4px) rotate(8deg);}
-        26% {transform: translateX(64px) translateY(-2px) rotate(-5deg); opacity: 1;}
-        28% {transform: translateX(64px) translateY(-2px); opacity: 0;}
+      .jn-nube {animation: jn-nube var(--dur) linear infinite; animation-delay: var(--delay);}
+      @keyframes jn-nube {
+        from {transform: translateX(-100px);}
+        to {transform: translateX(440px);}
       }
-      @keyframes fish-pass-panic {
-        0%, 100% {transform: translateX(64px) translateY(1px); opacity: 0;}
-        3% {transform: translateX(var(--fish-pass-start)) translateY(0); opacity: 0;}
-        5% {transform: translateX(var(--fish-pass-start)) translateY(-1px); opacity: 1;}
-        9% {transform: translateX(calc(var(--fish-pass-start) + 26px)) translateY(-6px) rotate(-13deg);}
-        12% {transform: translateX(calc(var(--fish-pass-start) + 23px)) translateY(5px) rotate(12deg);}
-        17% {transform: translateX(calc(var(--fish-pass-start) + 54px)) translateY(-5px) rotate(-11deg);}
-        20% {transform: translateX(calc(var(--fish-pass-start) + 50px)) translateY(6px) rotate(13deg);}
-        25% {transform: translateX(64px) translateY(-3px) rotate(-8deg); opacity: 1;}
-        27% {transform: translateX(64px) translateY(-3px); opacity: 0;}
+      .jn-ave {animation: jn-vuelo var(--dur) linear infinite; animation-delay: var(--delay);}
+      .jn-ave path {transform-box: fill-box; transform-origin: center;
+        animation: jn-aleteo .4s ease-in-out infinite alternate;}
+      @keyframes jn-vuelo {
+        from {transform: translate(-30px, 0);}
+        to {transform: translate(370px, -18px);}
       }
-      @keyframes fish-body {
+      @keyframes jn-aleteo {
+        from {transform: scaleY(1);}
+        to {transform: scaleY(.3);}
+      }
+      .jn-bote {transform-box: fill-box; transform-origin: center bottom;
+        animation: jn-bote var(--dur) ease-in-out infinite; animation-delay: var(--delay);}
+      @keyframes jn-bote {
+        0%, 100% {transform: translateY(0) rotate(-.9deg);}
+        50% {transform: translateY(-1.6px) rotate(1deg);}
+      }
+      .jn-camina {animation: jn-camina 18s linear infinite;}
+      @keyframes jn-camina {
+        0% {transform: translateX(0) scaleX(1);}
+        47% {transform: translateX(58px) scaleX(1);}
+        50% {transform: translateX(58px) scaleX(-1);}
+        97% {transform: translateX(0) scaleX(-1);}
+        100% {transform: translateX(0) scaleX(1);}
+      }
+      .jn-pierna {transform-box: fill-box; transform-origin: center top;
+        animation: jn-paso .55s ease-in-out infinite alternate;}
+      .jn-pierna + .jn-pierna {animation-direction: alternate-reverse;}
+      @keyframes jn-paso {
+        from {transform: rotate(-24deg);}
+        to {transform: rotate(24deg);}
+      }
+      .jn-respira {animation: jn-respira 3.2s ease-in-out infinite;}
+      @keyframes jn-respira {
+        0%, 100% {transform: translateY(0);}
+        50% {transform: translateY(-.7px);}
+      }
+      .jn-pez-nada {animation: jn-nada-der var(--nado) linear infinite;
+        animation-delay: var(--retraso);}
+      .jn-pez--izq .jn-pez-nada {animation-name: jn-nada-izq;}
+      @keyframes jn-nada-der {
+        from {transform: translateX(-70px);}
+        to {transform: translateX(410px);}
+      }
+      @keyframes jn-nada-izq {
+        from {transform: translateX(410px);}
+        to {transform: translateX(-70px);}
+      }
+      .jn-pez-cuerpo {transform-box: fill-box; transform-origin: center;
+        animation: jn-cuerpo-calma var(--cuerpo) ease-in-out infinite;}
+      .jn-pez--incomodo .jn-pez-cuerpo {animation-name: jn-cuerpo-incomodo;}
+      .jn-pez--asustado .jn-pez-cuerpo {animation-name: jn-cuerpo-asustado;}
+      @keyframes jn-cuerpo-calma {
         0%, 100% {transform: translateY(0) rotate(0);}
-        50% {transform: translateY(-1px) rotate(-3deg);}
+        50% {transform: translateY(-1.8px) rotate(-2.5deg);}
       }
+      @keyframes jn-cuerpo-incomodo {
+        0%, 100% {transform: translateY(-1px) rotate(-5deg);}
+        50% {transform: translateY(3px) rotate(6deg);}
+      }
+      @keyframes jn-cuerpo-asustado {
+        0%, 100% {transform: translateY(-3px) rotate(-11deg);}
+        50% {transform: translateY(4px) rotate(11deg);}
+      }
+      .fish-tail {transform-box: fill-box; transform-origin: right center;
+        animation: fish-tail var(--cola) ease-in-out infinite alternate;}
+      .fish-fin {transform-box: fill-box; transform-origin: center bottom;
+        animation: fish-fin var(--aleta) ease-in-out infinite alternate;}
       @keyframes fish-tail {
         from {transform: rotate(-28deg);}
         to {transform: rotate(28deg);}
@@ -227,36 +235,28 @@ st.markdown(
         from {transform: rotate(-12deg) scaleY(.9);}
         to {transform: rotate(12deg) scaleY(1.08);}
       }
-      @keyframes gauge-drift {
-        0%, 100% {transform: translateX(-8%) rotate(-2deg);}
-        50% {transform: translateX(8%) rotate(2deg);}
+      .jn-alerta {transform-box: fill-box; transform-origin: center;
+        animation: jn-alerta .7s ease-in-out infinite alternate;}
+      @keyframes jn-alerta {
+        from {transform: scale(.85);}
+        to {transform: scale(1.2);}
       }
-      @keyframes gauge-drift-back {
-        0%, 100% {transform: translateX(8%) rotate(2deg);}
-        50% {transform: translateX(-8%) rotate(-2deg);}
+      .jn-burbuja {animation: jn-burbuja var(--dur) ease-in infinite; animation-delay: var(--delay);}
+      @keyframes jn-burbuja {
+        0% {transform: translateY(0); opacity: 0;}
+        12% {opacity: .8;}
+        90% {opacity: .5;}
+        100% {transform: translateY(calc(var(--sube) * -1)); opacity: 0;}
       }
-      .gauge-tick {position: absolute; left: 88px; width: 38px; height: 1px;
-        background: #b7cbd4; transform: translateY(-50%);}
-      .gauge-scale {position: absolute; left: 24px; width: 54px; text-align: right;
-        color: #d7e5eb; font-size: 11px; transform: translateY(-50%);}
-      .gauge-reference {position: absolute; left: 124px; width: 84px;
-        border-top: 2px dashed #91aeba; transform: translateY(-50%);}
-      .gauge-reference-label {position: absolute; left: 216px; color: #b7cbd4;
-        font-size: 11px; transform: translateY(-50%);}
-      .gauge-current {position: absolute; left: 120px; width: 89px;
-        border-top: 2px solid #effdff; transform: translateY(-50%);}
-      .gauge-value {position: absolute; left: 216px; padding: 6px 8px; border-radius: 6px;
-        background: #167f94; color: #fff; font-size: 13px; font-weight: 700;
-        white-space: nowrap; transform: translateY(-50%);}
       @media (prefers-reduced-motion: reduce) {
-          .gauge-wave, .gauge-fish svg, .fish-tail, .fish-fin {
+          .jn-ola, .jn-ave path, .jn-bote, .jn-camina, .jn-pierna, .jn-respira,
+          .jn-pez-cuerpo, .fish-tail, .fish-fin, .jn-alerta, .jn-burbuja {
             animation: none;
           }
-          .gauge-fish {
-            animation: none;
-            transform: translateX(var(--fish-rest-x));
-            opacity: 1;
-          }
+          .jn-ave {display: none;}
+          .jn-nube {animation: none; transform: translateX(var(--reposo));}
+          .jn-pez-nada {animation: none; transform: translateX(var(--reposo));}
+          .jn-burbuja {opacity: .5;}
       }
       @media (max-width: 640px) {
         .block-container {padding: 1.25rem 1rem 2rem;}
@@ -648,164 +648,513 @@ def clasificar_estado_peces(nivel_cm: float, cambio_cm: float) -> tuple[str, str
     return "calm", "tranquilos"
 
 
+def _ventana_svg(
+    x: float, y: float, ancho: float = 12, alto: float = 22, arco: bool = False,
+    marco: str = "#2e5b78", vidrio: str = "#4a86a8",
+) -> str:
+    if arco:
+        radio = ancho / 2
+        return (
+            f'<path d="M{x} {y + alto}V{y + radio}a{radio} {radio} 0 0 1 {ancho} 0V{y + alto}Z" '
+            f'fill="{vidrio}" stroke="{marco}" stroke-width="1.3"/>'
+        )
+    return (
+        f'<rect x="{x}" y="{y}" width="{ancho}" height="{alto}" fill="{vidrio}" '
+        f'stroke="{marco}" stroke-width="1.3"/>'
+        f'<path d="M{x + ancho / 2} {y}v{alto}M{x} {y + alto / 2}h{ancho}" '
+        f'stroke="{marco}" stroke-width=".7"/>'
+    )
+
+
+def _persona_svg(
+    camisa: str, pantalon: str, piel: str = "#c68a63",
+    camina: bool = False, sentada: bool = False,
+) -> str:
+    """Figura de unos 22 px de alto con los pies en (0, 0)."""
+    cabeza = (
+        f'<circle cx="0" cy="-19" r="3.1" fill="{piel}"/>'
+        '<path d="M-3.2 -20.4Q0 -24.2 3.2 -20.4Z" fill="#2b2622"/>'
+    )
+    torso = f'<rect x="-3.4" y="-16" width="6.8" height="9.6" rx="2.2" fill="{camisa}"/>'
+    if sentada:
+        return cabeza + torso
+    clase = ' class="jn-pierna"' if camina else ""
+    piernas = (
+        f'<rect{clase} x="-3" y="-7" width="2.8" height="7" rx="1" fill="{pantalon}"/>'
+        f'<rect{clase} x=".2" y="-7" width="2.8" height="7" rx="1" fill="{pantalon}"/>'
+    )
+    return cabeza + torso + piernas
+
+
+def _bote_svg(x: float, y_agua: float, tipo: str, retraso: float, duracion: float) -> str:
+    motor = '<path d="M{0} -1H{1}V8H{0}Z" fill="#23272b"/><path d="M{2} 8V15" stroke="#23272b" stroke-width="2"/>'
+    if tipo == "a":
+        interior = (
+            '<path d="M0 0H44L40 11Q22 14.5 5 11Z" fill="#2f6f9a"/>'
+            '<path d="M0 0H44" stroke="#eef3f5" stroke-width="1.8"/>'
+            + motor.format(44, 49, 46.5)
+        )
+    elif tipo == "b":
+        interior = (
+            f'<g transform="translate(18 7)">{_persona_svg("#f1f1ec", "#555", sentada=True)}</g>'
+            f'<g transform="translate(32 7)">{_persona_svg("#e3a23a", "#555", piel="#a8714d", sentada=True)}</g>'
+            '<path d="M0 0H62L57 11Q30 15 6 11Z" fill="#3f8f6b"/>'
+            '<path d="M0 0H62" stroke="#e9f2ec" stroke-width="1.8"/>'
+            + motor.format(62, 67, 64.5)
+        )
+    else:
+        interior = (
+            '<path d="M8 0L16 -15L68 -17L78 0Z" fill="#f5f3ec"/>'
+            '<path d="M24 -15.5L21 0M40 -16L39 0M56 -16.5L57 0" stroke="#d3d0c4" stroke-width=".9"/>'
+            '<path d="M8 0L16 -15M78 0L68 -17" stroke="#6b4b2f" stroke-width="1.4"/>'
+            '<path d="M0 0H84L78 11Q42 15 7 11Z" fill="#c65a4b"/>'
+            '<path d="M0 0H84" stroke="#f3dfd8" stroke-width="1.8"/>'
+            + motor.format(84, 90, 87)
+        )
+    return (
+        f'<g transform="translate({x} {y_agua - 5:.1f})">'
+        f'<g class="jn-bote" style="--dur:{duracion}s;--delay:{retraso}s">{interior}</g></g>'
+    )
+
+
+def _ola_path(amplitud: float, periodo: float, ciclos: int, espesor: float = 16) -> str:
+    """Onda continua de 340 px de ciclo exacto: el desplazamiento de -340 px es un bucle sin saltos."""
+    mitad = periodo / 2
+    d = f"M0 0Q{mitad / 2:.2f} {-amplitud:.2f} {mitad:.2f} 0"
+    d += "".join(f"T{mitad * (i + 2):.2f} 0" for i in range(ciclos * 2 - 1))
+    return f"{d}V{espesor}H0Z"
+
+
+@lru_cache(maxsize=1)
+def _escena_fija_svg() -> str:
+    """Cielo, ciudad, muralla, talud con escalera, enrocado y lecho: no dependen del nivel."""
+    rng = random.Random(29037020)
+
+    # ── Talud: grava, hierba y surcos de erosión
+    colores_grava = ("#8f7b5a", "#d3bf96", "#a08d6b", "#6f5f46")
+    grava = []
+    for _ in range(85):
+        color = rng.choice(colores_grava)
+        grava.append(
+            f'<ellipse cx="{rng.uniform(2, 338):.1f}" cy="{rng.uniform(244, 359):.1f}" '
+            f'rx="{rng.uniform(.8, 2.3):.1f}" ry="{rng.uniform(.6, 1.4):.1f}" fill="{color}" opacity=".55"/>'
+        )
+    hierba = ""
+    for _ in range(18):
+        hx, hy = rng.uniform(4, 336), rng.uniform(246, 354)
+        hierba += f"M{hx:.1f} {hy:.1f}l-2.2 -6.5M{hx:.1f} {hy:.1f}l.2 -7.5M{hx:.1f} {hy:.1f}l2.4 -6"
+
+    # ── Enrocado de piedra al pie del talud
+    tonos_piedra = ("#7e8782", "#919a95", "#6d7671", "#a0a79f", "#868f86")
+    piedras = []
+    y = 364.0
+    while y < 470:
+        alto_fila = 11 + rng.random() * 2
+        x = -rng.random() * 12
+        while x < 340:
+            ancho_bloque = 15 + rng.random() * 14
+            color = rng.choice(tonos_piedra)
+            piedras.append(
+                f'<rect x="{x:.1f}" y="{y:.1f}" width="{ancho_bloque - .8:.1f}" '
+                f'height="{alto_fila - .8:.1f}" rx="2.2" fill="{color}"/>'
+            )
+            x += ancho_bloque
+        y += alto_fila
+
+    # ── Escalera que baja de la muralla al talud (vista de perfil)
+    peldanos, dx, dy, x0, y0 = 10, 5.6, 11.2, 172.0, 190.0
+    borde = [(x0, y0)]
+    for i in range(peldanos):
+        borde.append((x0 + (i + 1) * dx, y0 + i * dy))
+        borde.append((x0 + (i + 1) * dx, y0 + (i + 1) * dy))
+    inferior = [(px, py + 19) for px, py in reversed(borde)]
+    puntos_escalera = " ".join(f"{px:.1f},{py:.1f}" for px, py in borde + inferior)
+    postes = "".join(
+        f"M{x0 + (i + 1) * dx:.1f} {y0 + i * dy:.1f}v-15" for i in range(0, peldanos, 2)
+    )
+    xf, yf = x0 + peldanos * dx, y0 + peldanos * dy
+
+    # ── Ciudad
+    ventanas_blancas = "".join(
+        _ventana_svg(x, 138, 14, 20, marco="#cfe0ea", vidrio="#35617b") for x in (166, 196, 226, 256, 286)
+    )
+    merlones = "".join(
+        f'<rect x="{x}" y="105" width="9" height="10" fill="#c3d8e4"/>' for x in range(156, 336, 15)
+    )
+    ventanas_amarillo = "".join(
+        _ventana_svg(x, 106, 13, 24, marco="#2b5a79", vidrio="#3d7fa5")
+        + f'<rect x="{x - 4}" y="106" width="3" height="24" fill="#3b6f95"/>'
+        f'<rect x="{x + 14}" y="106" width="3" height="24" fill="#3b6f95"/>'
+        for x in (76, 98, 120)
+    )
+    arcos_amarillo = "".join(
+        _ventana_svg(x, 152, 14, 34, arco=True, marco="#7a5a2c", vidrio="#5b4527") for x in (74, 98, 122)
+    )
+    postes_balcon = "".join(f"M{x} 131v7" for x in range(68, 152, 6))
+    postes_verde = "".join(f"M{x} 118v8" for x in range(2, 68, 5))
+    ventanas_verde = "".join(
+        _ventana_svg(x, 144, 12, 24, arco=True, marco="#d9f1df", vidrio="#2f6a5c") for x in (8, 28, 48)
+    )
+
+    return "\n".join([
+        '<defs>'
+        '<linearGradient id="jn-cielo" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#17527c"/><stop offset=".55" stop-color="#6cb0d3"/>'
+        '<stop offset="1" stop-color="#bfe0ee"/></linearGradient>'
+        '<linearGradient id="jn-muro" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#e8e1ce"/><stop offset="1" stop-color="#c2b8a0"/></linearGradient>'
+        '<linearGradient id="jn-talud" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#cdb588"/><stop offset="1" stop-color="#8a7656"/></linearGradient>'
+        '<linearGradient id="jn-humedad" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#0b1a14" stop-opacity="0"/>'
+        '<stop offset="1" stop-color="#0b1a14" stop-opacity=".32"/></linearGradient>'
+        '<linearGradient id="jn-lecho" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#8c7658"/><stop offset="1" stop-color="#4c3f31"/></linearGradient>'
+        '</defs>',
+        # Cielo, título, nubes y aves
+        '<rect width="340" height="200" fill="url(#jn-cielo)"/>',
+        '<text x="20" y="27" font-size="12" font-weight="700" letter-spacing="2" fill="#ffffff" '
+        'font-family="Arial, sans-serif">NIVEL DEL RÍO</text>',
+        '<text x="20" y="42" font-size="9" letter-spacing="1" fill="#dcedf6" '
+        f'font-family="Arial, sans-serif">CALAMAR · BOLÍVAR · IDEAM {ESTACION_CODIGO}</text>',
+        '<g class="jn-nube" style="--dur:95s;--delay:-34s;--reposo:70px"><g transform="translate(0 68)">'
+        '<ellipse cx="0" cy="0" rx="24" ry="6.5" fill="#fff" opacity=".85"/>'
+        '<ellipse cx="10" cy="-5" rx="14" ry="7" fill="#fff" opacity=".9"/>'
+        '<ellipse cx="-11" cy="-3" rx="12" ry="5.5" fill="#fff" opacity=".85"/></g></g>',
+        '<g class="jn-nube" style="--dur:120s;--delay:-80s;--reposo:250px"><g transform="translate(0 94)">'
+        '<ellipse cx="0" cy="0" rx="19" ry="5" fill="#fff" opacity=".7"/>'
+        '<ellipse cx="8" cy="-4" rx="11" ry="5.5" fill="#fff" opacity=".75"/></g></g>',
+        # Ciudad: edificio trasero, edificio blanco almenado, edificio amarillo y edificio verde
+        '<rect x="146" y="64" width="58" height="124" fill="#7c6a63"/>'
+        '<rect x="143" y="59" width="64" height="7" fill="#cdc4b5"/>'
+        '<path d="M152 70v118M168 70v118M184 70v118M198 70v118" stroke="#000" stroke-opacity=".08" stroke-width="3"/>'
+        '<rect x="156" y="78" width="8" height="15" fill="#2b3944"/><rect x="176" y="78" width="8" height="15" fill="#2b3944"/>'
+        '<rect x="156" y="104" width="8" height="15" fill="#2b3944"/><rect x="176" y="104" width="8" height="15" fill="#2b3944"/>',
+        '<rect x="150" y="122" width="190" height="66" fill="#e8eff2"/>'
+        '<rect x="150" y="114" width="190" height="10" fill="#d4e3eb"/>'
+        f'{merlones}'
+        '<rect x="150" y="124" width="190" height="3" fill="#8db3c8"/>'
+        f'{ventanas_blancas}'
+        + _ventana_svg(312, 156, 16, 30, arco=True, marco="#cfe0ea", vidrio="#5f8aa0"),
+        '<path d="M56 100L96 85H154V94H66Z" fill="#b2533a"/>'
+        '<path d="M56 100L96 85" stroke="#7d3724" stroke-width="1.2"/>'
+        '<rect x="66" y="94" width="86" height="92" fill="#f2cf45"/>'
+        '<rect x="140" y="94" width="12" height="92" fill="#c9a62d" opacity=".55"/>'
+        '<rect x="64" y="94" width="90" height="4" fill="#d9b530"/>'
+        f'{ventanas_amarillo}'
+        '<rect x="64" y="138" width="90" height="3" fill="#b8962a"/>'
+        f'<path d="{postes_balcon}M64 131H154" stroke="#9a7c22" stroke-width="1.2" fill="none"/>'
+        f'{arcos_amarillo}'
+        '<rect x="88" y="146" width="44" height="8" fill="#1f5a4a"/>'
+        '<path d="M92 150h12m4 0h8m4 0h6" stroke="#e8f0d8" stroke-width="1.4"/>',
+        '<rect x="0" y="130" width="68" height="56" fill="#85c6a4"/>'
+        '<rect x="0" y="126" width="68" height="5" fill="#e6f0e2"/>'
+        '<rect x="0" y="116" width="68" height="2.4" fill="#f2f6ef"/>'
+        f'<path d="{postes_verde}" stroke="#f2f6ef" stroke-width="1.5"/>'
+        f'{ventanas_verde}'
+        '<rect x="0" y="174" width="68" height="12" fill="#6aae8d"/>',
+        # Puestos sobre la muralla: toldo naranja y lona azul
+        '<path d="M196 186L205 169H258L267 186Z" fill="#d4673f"/>'
+        '<path d="M214 169L211 186M226 169L225 186M238 169L238 186M250 169L252 186" '
+        'stroke="#f1d3c3" stroke-width="1.6" opacity=".7"/>'
+        '<path d="M82 186L86 175H112L116 186Z" fill="#3b6fb0"/>',
+        # Muralla (10 m)
+        '<rect x="0" y="186" width="340" height="4" fill="#f1ebdc"/>'
+        '<rect x="0" y="190" width="340" height="46" fill="url(#jn-muro)"/>'
+        '<path d="M42 190v46M84 190v46M126 190v46M168 190v46M210 190v46M252 190v46M294 190v46" '
+        'stroke="#5a4e38" stroke-opacity=".2"/>'
+        '<rect x="0" y="231" width="340" height="5" fill="#5a4a30" opacity=".22"/>'
+        '<rect x="50" y="197" width="100" height="30" rx="2" fill="#f3efe2" stroke="#d8d0ba"/>'
+        '<rect x="50" y="199" width="100" height="6" fill="#c2453a"/>'
+        '<rect x="58" y="210" width="46" height="10" rx="1" fill="#2d6b9b" opacity=".85"/>'
+        '<path d="M110 212h30M110 217h22" stroke="#9c9786" stroke-width="2"/>'
+        '<rect x="0" y="236" width="340" height="5" fill="#a89e88"/>',
+        # Talud
+        '<rect x="0" y="241" width="340" height="123" fill="url(#jn-talud)"/>'
+        '<path d="M60 242q4 30 -2 60q-4 30 4 60M150 242q-4 34 2 66q4 28 -2 54M262 242q5 28 -1 58q-5 32 3 64" '
+        'fill="none" stroke="#4f3d22" stroke-opacity=".12" stroke-width="4" stroke-linecap="round"/>'
+        '<path d="M0 266Q90 257 170 267T340 262M0 300Q80 292 170 301T340 296M0 334Q90 326 170 335T340 330" '
+        'fill="none" stroke="#5e4a2a" stroke-opacity=".2" stroke-width="1.4"/>'
+        '<path d="M226 306Q272 297 340 293" fill="none" stroke="#dccba3" stroke-width="5" '
+        'stroke-linecap="round" opacity=".55"/>',
+        "".join(grava),
+        f'<path d="{hierba}" stroke="#4d8a3a" stroke-width="1.1" stroke-linecap="round" fill="none"/>',
+        '<text x="46" y="288" font-size="9" font-weight="700" letter-spacing="2" fill="#fff8e6" '
+        'opacity=".9" font-family="Arial, sans-serif">TALUD</text>',
+        # Enrocado y lecho del río
+        '<rect x="0" y="362" width="340" height="110" fill="#59625d"/>',
+        "".join(piedras),
+        '<rect x="0" y="360" width="340" height="4" fill="#6d6a5b"/>'
+        '<rect x="0" y="400" width="340" height="72" fill="url(#jn-humedad)"/>'
+        '<path d="M0 466Q40 459 90 465T200 464T340 461V500H0Z" fill="url(#jn-lecho)"/>'
+        '<circle cx="52" cy="482" r="2.4" fill="#b19a78" opacity=".7"/>'
+        '<circle cx="171" cy="488" r="3" fill="#a08a69" opacity=".7"/>'
+        '<circle cx="268" cy="480" r="2.2" fill="#b19a78" opacity=".7"/>',
+        # Escalera con baranda
+        f'<polygon points="{puntos_escalera}" fill="#d6cfba" stroke="#7a7260" stroke-width=".9" stroke-linejoin="round"/>'
+        f'<path d="M{x0:.1f} {y0 - 15:.1f}L{xf:.1f} {yf - 15:.1f}{postes}" stroke="#2f414c" '
+        'stroke-width="1.5" fill="none" stroke-linecap="round"/>',
+        # Aves
+        '<g class="jn-ave" style="--dur:30s;--delay:-8s"><g transform="translate(0 84)">'
+        '<path d="M0 0q3 -3.2 6 0q3 -3.2 6 0" fill="none" stroke="#173a52" stroke-width="1.2" '
+        'stroke-linecap="round"/></g></g>'
+        '<g class="jn-ave" style="--dur:38s;--delay:-21s"><g transform="translate(0 102)">'
+        '<path d="M0 0q2.5 -2.6 5 0q2.5 -2.6 5 0" fill="none" stroke="#173a52" stroke-width="1" '
+        'stroke-linecap="round"/></g></g>',
+    ])
+
+
+def _compactar_html(html: str) -> str:
+    """Quita sangrías y líneas vacías para que Markdown trate todo como un solo bloque HTML."""
+    return "\n".join(linea.strip() for linea in html.splitlines() if linea.strip())
+
+
 def crear_medidor_html(
     nivel_cm: float,
-    escala_max_cm: int,
     umbrales: dict,
     estado_peces: str,
     estado_peces_texto: str,
 ) -> str:
-    y_superior = 74
-    y_inferior = 448
-    alto_track = y_inferior - y_superior
-    posicion = lambda valor: y_inferior - max(0, min(valor / escala_max_cm, 1)) * alto_track
-    nivel_y = posicion(nivel_cm)
-    referencia_y = posicion(NIVEL_REFERENCIA_CM)
-    etiqueta_nivel_y = nivel_y
-    if abs(nivel_cm - NIVEL_REFERENCIA_CM) < 35:
-        etiqueta_nivel_y += -42 if nivel_cm >= NIVEL_REFERENCIA_CM else 42
+    """Escena animada de Calamar: el nivel (0–10 m) sube por el talud hasta la muralla."""
+    y_cero, y_muralla, y_fondo = 452.0, 186.0, 482.0
+    px_por_cm = (y_cero - y_muralla) / NIVEL_MURALLA_CM
+    posicion = lambda cm: y_cero - cm * px_por_cm
+    y_s = posicion(max(0.0, min(nivel_cm, NIVEL_MURALLA_CM * 1.12)))
+    sobre_muralla = nivel_cm > NIVEL_MURALLA_CM
 
-    marcas_html = []
-    for marca in range(0, escala_max_cm + 1, 100):
-        y = posicion(marca)
-        marcas_html.append(
-            f'<div class="gauge-tick" style="top:{y:.1f}px"></div>'
-            f'<div class="gauge-scale" style="top:{y:.1f}px">{marca / 100:.0f}</div>'
+    # ── Personas: solo se dibujan si el agua no las cubre
+    gente = []
+    if y_s > 192:
+        gente.append(
+            '<g transform="translate(160 186)"><g class="jn-respira">'
+            f'{_persona_svg("#26394a", "#1d2a35")}</g></g>'
+        )
+    if y_s > 303:
+        gente.append(
+            '<g transform="translate(262 299)"><g class="jn-camina">'
+            f'{_persona_svg("#3f7fc0", "#59606a", camina=True)}</g></g>'
         )
 
-    alertas_html = []
-    colores = {"amarilla": "#e6b84f", "naranja": "#f08c53", "roja": "#e26168"}
-    for nombre, color in colores.items():
-        valor = umbrales["valores"][nombre]
-        if valor is None or not 0 <= valor <= escala_max_cm:
-            continue
-        y = posicion(valor)
-        alertas_html.append(
-            f'<div style="position:absolute;left:124px;top:{y:.1f}px;width:84px;'
-            f'border-top:2px dotted {color};transform:translateY(-50%)"></div>'
+    botes = "".join(
+        _bote_svg(x, y_s, tipo, retraso, duracion)
+        for x, tipo, retraso, duracion in (
+            (42, "a", -0.4, 3.7), (96, "b", -1.9, 4.3), (160, "c", -3.1, 4.9),
         )
+    )
 
+    # ── Peces (mismas especies y estados de ánimo que antes)
     perfiles_peces = [
         {
-            "especie": "bocachico",
-            "ancho": 40,
-            "alto": 20,
-            "profundidad": 68,
-            "desfases": (0, 0, 0),
-            "colas": (0.38, 0.18, 0.08),
-            "aletas": (0.66, 0.32, 0.14),
-            "cuerpos": (1.7, 0.8, 0.38),
-            "svg": """
-              <svg viewBox="0 0 48 24" aria-hidden="true">
+            "especie": "bocachico", "ancho": 40, "alto": 20, "profundidad": 68, "sentido": "der",
+            "nado": 1.0, "fase": 0.15, "reposo": 40,
+            "colas": (0.38, 0.18, 0.08), "aletas": (0.66, 0.32, 0.14), "cuerpos": (1.7, 0.8, 0.38),
+            "partes": """
                 <path class="fish-tail" d="M9 12 2 5v14l7-7Z" fill="#dc8e43"/>
-                <path class="fish-body" d="M7 12C14 4 32 5 42 12 32 19 14 20 7 12Z" fill="#f2c65d"/>
+                <path d="M7 12C14 4 32 5 42 12 32 19 14 20 7 12Z" fill="#f2c65d"/>
                 <path class="fish-fin" d="m17 7 5-5 6 5Z" fill="#e99d49"/>
                 <path class="fish-fin" d="m19 17 5 5 5-5Z" fill="#e99d49"/>
                 <path d="M19 8v8m5-9v10m5-9v8" stroke="#d69345" stroke-width="1"/>
                 <circle cx="36" cy="10" r="1.2" fill="#17384a"/>
-              </svg>
             """,
         },
         {
-            "especie": "bagre",
-            "ancho": 44,
-            "alto": 18,
-            "profundidad": 51,
-            "desfases": (4.8, 3.9, 2.9),
-            "colas": (0.52, 0.22, 0.09),
-            "aletas": (0.82, 0.36, 0.16),
-            "cuerpos": (2.1, 0.9, 0.42),
-            "svg": """
-              <svg viewBox="0 0 48 24" aria-hidden="true">
+            "especie": "bagre", "ancho": 44, "alto": 18, "profundidad": 51, "sentido": "izq",
+            "nado": 1.25, "fase": 0.55, "reposo": 230,
+            "colas": (0.52, 0.22, 0.09), "aletas": (0.82, 0.36, 0.16), "cuerpos": (2.1, 0.9, 0.42),
+            "partes": """
                 <path class="fish-tail" d="M9 12 2 6v12l7-6Z" fill="#4a8f91"/>
-                <path class="fish-body" d="M8 12C15 6 34 7 41 12 34 17 15 18 8 12Z" fill="#8fc2b4"/>
+                <path d="M8 12C15 6 34 7 41 12 34 17 15 18 8 12Z" fill="#8fc2b4"/>
                 <path class="fish-fin" d="m17 8 5-5 5 5Z" fill="#477f83"/>
                 <path class="fish-fin" d="m20 16 4 5 4-5Z" fill="#477f83"/>
                 <path d="M36 10Q42 6 47 7M36 14Q42 18 47 17" fill="none" stroke="#d8d2a7" stroke-width="1"/>
                 <circle cx="36" cy="10" r="1.1" fill="#102b3b"/>
-              </svg>
             """,
         },
         {
-            "especie": "mojarra",
-            "ancho": 34,
-            "alto": 22,
-            "profundidad": 35,
-            "desfases": (9.6, 7.8, 5.8),
-            "colas": (0.3, 0.16, 0.07),
-            "aletas": (0.58, 0.28, 0.13),
-            "cuerpos": (1.5, 0.72, 0.34),
-            "svg": """
-              <svg viewBox="0 0 48 24" aria-hidden="true">
+            "especie": "mojarra", "ancho": 34, "alto": 22, "profundidad": 35, "sentido": "der",
+            "nado": 0.85, "fase": 0.8, "reposo": 130,
+            "colas": (0.3, 0.16, 0.07), "aletas": (0.58, 0.28, 0.13), "cuerpos": (1.5, 0.72, 0.34),
+            "partes": """
                 <path class="fish-tail" d="M11 12 3 6v12l8-6Z" fill="#e98650"/>
-                <ellipse class="fish-body" cx="25" cy="12" rx="15" ry="9" fill="#f5bd68"/>
+                <ellipse cx="25" cy="12" rx="15" ry="9" fill="#f5bd68"/>
                 <path class="fish-fin" d="m14 7 3-5 4 5 4-6 4 6 4-4 3 7Z" fill="#dc8050"/>
                 <path class="fish-fin" d="m21 18 5 5 4-6Z" fill="#e98650"/>
                 <path d="M20 5v14m6-14v14m6-12v10" stroke="#db9456" stroke-width="1"/>
                 <circle cx="35" cy="9" r="1.2" fill="#17384a"/>
-              </svg>
             """,
         },
         {
-            "especie": "sabalo",
-            "ancho": 45,
-            "alto": 17,
-            "profundidad": 20,
-            "desfases": (14.4, 11.7, 8.7),
-            "colas": (0.46, 0.2, 0.085),
-            "aletas": (0.72, 0.34, 0.15),
-            "cuerpos": (1.9, 0.84, 0.4),
-            "svg": """
-              <svg viewBox="0 0 48 24" aria-hidden="true">
+            "especie": "sabalo", "ancho": 45, "alto": 17, "profundidad": 20, "sentido": "izq",
+            "nado": 1.1, "fase": 0.35, "reposo": 290,
+            "colas": (0.46, 0.2, 0.085), "aletas": (0.72, 0.34, 0.15), "cuerpos": (1.9, 0.84, 0.4),
+            "partes": """
                 <path class="fish-tail" d="M9 12 2 4v16l7-8Z" fill="#6ba6ad"/>
-                <path class="fish-body" d="M7 12C16 6 35 7 43 12 35 17 16 18 7 12Z" fill="#b9d6c9"/>
+                <path d="M7 12C16 6 35 7 43 12 35 17 16 18 7 12Z" fill="#b9d6c9"/>
                 <path class="fish-fin" d="m20 8 4-5 5 5Z" fill="#6ba6ad"/>
                 <path class="fish-fin" d="m23 16 4 5 4-5Z" fill="#6ba6ad"/>
                 <path d="M17 12h19m-13-3v6m6-6v6" stroke="#6b9fa4" stroke-width=".9"/>
                 <circle cx="37" cy="10" r="1" fill="#17384a"/>
-              </svg>
             """,
         },
     ]
-    indice_estado = {"calm": 0, "uncomfortable": 1, "scared": 2}[estado_peces]
-    fase_inicial = (3.5, 2.5, 1.8)[indice_estado]
-    peces_html = []
+    indice = {"calm": 0, "uncomfortable": 1, "scared": 2}[estado_peces]
+    clase_estado = ("calma", "incomodo", "asustado")[indice]
+    nado_base = (30.0, 21.0, 11.0)[indice]
+    peces = []
     for pez in perfiles_peces:
-        especie = pez["especie"]
-        estilo_pez = (
-            f"--fish-width:{pez['ancho']}px;--fish-height:{pez['alto']}px;"
-            f"--fish-depth:{pez['profundidad']}%;"
-            f"--fish-delay:{pez['desfases'][indice_estado] - fase_inicial}s;"
-            f"--fish-tail-duration:{pez['colas'][indice_estado]}s;"
-            f"--fish-fin-duration:{pez['aletas'][indice_estado]}s;"
-            f"--fish-body-duration:{pez['cuerpos'][indice_estado]}s;"
+        ancho, alto = pez["ancho"], pez["alto"]
+        y_centro = y_fondo - pez["profundidad"] / 100 * (y_fondo - y_s)
+        y_centro = min(max(y_centro, y_s + 14 + alto / 2), y_fondo - alto / 2)
+        izquierda = pez["sentido"] == "izq"
+        escala = ancho / 48
+        if izquierda:
+            transformacion = f"translate({ancho} 0) scale({-escala:.3f} {escala:.3f})"
+            x_cabeza = ancho * 0.12
+        else:
+            transformacion = f"scale({escala:.3f})"
+            x_cabeza = ancho * 0.88
+        duracion = nado_base * pez["nado"]
+        alerta = ""
+        if estado_peces == "scared":
+            alerta = (
+                f'<g transform="translate({x_cabeza:.1f} -4)"><g class="jn-alerta">'
+                '<circle r="5.5" fill="#fff3e0"/>'
+                '<text y="3.2" text-anchor="middle" font-size="9" font-weight="700" fill="#b5432f" '
+                'font-family="Arial, sans-serif">!</text></g></g>'
+            )
+        estilo = (
+            f"--nado:{duracion:.1f}s;--retraso:-{duracion * pez['fase']:.1f}s;"
+            f"--cuerpo:{pez['cuerpos'][indice]}s;--cola:{pez['colas'][indice]}s;"
+            f"--aleta:{pez['aletas'][indice]}s;--reposo:{pez['reposo']}px;"
         )
-        peces_html.append(
-            f'<span class="gauge-fish gauge-fish--{estado_peces} gauge-fish--{especie}" '
-            f'style="{estilo_pez}" aria-hidden="true">{pez["svg"]}'
-            '<span class="gauge-fish-alert">!</span></span>'
+        peces.append(
+            f'<g transform="translate(0 {y_centro - alto / 2:.1f})" '
+            f'class="jn-pez jn-pez--{clase_estado} jn-pez--{pez["sentido"]} jn-pez--{pez["especie"]}" '
+            f'style="{estilo}"><g class="jn-pez-nada"><g class="jn-pez-cuerpo">'
+            f'<g transform="{transformacion}">{pez["partes"]}</g></g>{alerta}</g></g>'
         )
-    peces_html = "".join(peces_html)
 
-    return f"""
-    <div class="gauge-panel" role="img" aria-label="Medidor del nivel del río: {nivel_cm:.1f} centímetros. Peces {estado_peces_texto}.">
-      <div class="gauge-title">NIVEL DEL RÍO</div>
-      <div class="gauge-subtitle">CALAMAR · BOLÍVAR · IDEAM {ESTACION_CODIGO}</div>
-      <div class="gauge-track">
-        <div class="gauge-water" style="height:{max(0, min(nivel_cm / escala_max_cm, 1)):.4%}">
-          <span class="gauge-wave gauge-wave-back"></span>
-          <span class="gauge-wave"></span>
-          {peces_html}
-        </div>
-      </div>
-      {''.join(marcas_html)}
-      <div class="gauge-reference" style="top:{referencia_y:.1f}px"></div>
-      <div class="gauge-reference-label" style="top:{referencia_y:.1f}px">950 cm</div>
-      {''.join(alertas_html)}
-      <div class="gauge-current" style="top:{nivel_y:.1f}px"></div>
-      <div class="gauge-value" style="top:{etiqueta_nivel_y:.1f}px">{nivel_cm / 100:.2f} m</div>
+    # ── Burbujas
+    base_burbuja = y_fondo - 4
+    sube = base_burbuja - y_s
+    burbujas = []
+    if sube > 10:
+        for bx, radio, duracion, retraso in (
+            (58, 2.2, 5.5, 0), (112, 1.6, 4.4, 1.7), (176, 2.4, 6.2, 3.1),
+            (236, 1.8, 4.9, 0.8), (296, 2.0, 5.8, 2.6), (140, 1.4, 4.1, 3.9),
+        ):
+            burbujas.append(
+                f'<circle class="jn-burbuja" cx="{bx}" cy="{base_burbuja:.0f}" r="{radio}" fill="none" '
+                f'stroke="#dcf6fa" stroke-width="1" style="--sube:{sube:.0f}px;--dur:{duracion}s;--delay:-{retraso}s"/>'
+            )
+
+    # ── Agua: cuerpo translúcido, destellos y dos olas
+    destellos = "".join(f"M{k * 85 + 10} 9h14M{k * 85 + 48} 17h9M{k * 85 + 28} 27h11" for k in range(8))
+    agua = (
+        '<defs><linearGradient id="jn-agua" gradientUnits="userSpaceOnUse" '
+        f'x1="0" y1="{y_s:.1f}" x2="0" y2="500">'
+        '<stop offset="0" stop-color="#2aa3b4" stop-opacity=".62"/>'
+        '<stop offset=".45" stop-color="#127a91" stop-opacity=".8"/>'
+        '<stop offset="1" stop-color="#0c4057" stop-opacity=".93"/></linearGradient></defs>'
+        f'<rect x="0" y="{y_s:.1f}" width="340" height="{500 - y_s:.1f}" fill="url(#jn-agua)"/>'
+        f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:16s">'
+        f'<path d="{destellos}" stroke="#ffffff" stroke-opacity=".3" stroke-width="1" '
+        'stroke-linecap="round" fill="none"/></g></g>'
+    )
+    ola_atras = (
+        f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:13s;--delay:-4s">'
+        f'<path d="{_ola_path(2.4, 68, 10, 12)}" fill="#63cbd6" opacity=".38"/></g></g>'
+    )
+    ola_frente = (
+        f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:8s">'
+        f'<path d="{_ola_path(3.2, 85, 8, 14)}" fill="#3bb7c8" fill-opacity=".5" '
+        'stroke="#ffffff" stroke-opacity=".75" stroke-width="1.1"/></g></g>'
+    )
+
+    # ── Regla de nivel (izquierda) y etiquetas (derecha)
+    marcas = []
+    for metro in range(0, 11):
+        y = posicion(metro * 100)
+        marcas.append(
+            f'<path d="M24 {y:.1f}H36" stroke="#d7e9f0" stroke-width="1"/>'
+            f'<text x="20" y="{y + 3.5:.1f}" text-anchor="end" font-size="10" fill="#eef7fa" '
+            f'font-family="Arial, sans-serif">{metro}</text>'
+        )
+        if metro < 10:
+            marcas.append(f'<path d="M30 {y - px_por_cm * 50:.1f}H36" stroke="#9fc0cc" stroke-width=".8"/>')
+    regla = (
+        f'<rect x="6" y="{y_muralla - 10:.1f}" width="32" height="{y_cero - y_muralla + 22:.1f}" rx="6" '
+        'fill="#0f2c3b" fill-opacity=".72"/>'
+        + "".join(marcas)
+        + f'<text x="20" y="{y_cero + 17:.1f}" text-anchor="middle" font-size="8" fill="#9fc0cc" '
+        'font-family="Arial, sans-serif">m</text>'
+        f'<polygon points="39,{y_s:.1f} 47,{y_s - 4.5:.1f} 47,{y_s + 4.5:.1f}" fill="#ffffff" stroke="#167f94"/>'
+    )
+
+    lineas = [
+        f'<path d="M40 {posicion(NIVEL_REFERENCIA_CM):.1f}H340" stroke="#0f2c3b" stroke-opacity=".6" '
+        'stroke-dasharray="5 4" stroke-width="1.2"/>'
+    ]
+    etiquetas = [
+        {"y": posicion(NIVEL_MURALLA_CM), "texto": "MURALLA SUPERADA" if sobre_muralla else "MURALLA 10 m",
+         "fondo": "#b5432f" if sobre_muralla else "#4b4130", "tinta": "#ffffff", "prioridad": 0},
+        {"y": posicion(NIVEL_REFERENCIA_CM), "texto": f"Ref. {NIVEL_REFERENCIA_CM} cm",
+         "fondo": "#0f2c3b", "tinta": "#e3f0f5", "prioridad": 1},
+        {"y": y_s, "texto": f"{nivel_cm / 100:.2f} m", "fondo": "#167f94", "tinta": "#ffffff", "prioridad": 2},
+    ]
+    colores_umbral = {"amarilla": "#e6b84f", "naranja": "#f08c53", "roja": "#e26168"}
+    for nombre, color in colores_umbral.items():
+        valor = umbrales["valores"][nombre]
+        if valor is None or not 0 <= valor <= NIVEL_MURALLA_CM:
+            continue
+        lineas.append(
+            f'<path d="M40 {posicion(valor):.1f}H340" stroke="{color}" stroke-width="1.6" '
+            'stroke-dasharray="2 3"/>'
+        )
+        etiquetas.append(
+            {"y": posicion(valor), "texto": nombre.capitalize(), "fondo": color,
+             "tinta": "#102b3b", "prioridad": 1}
+        )
+    etiquetas.sort(key=lambda e: (e["y"], e["prioridad"]))
+    # Separa las etiquetas para que no se encimen: primero hacia abajo, luego hacia arriba si hace falta.
+    previo = 14.0 - 18
+    for e in etiquetas:
+        previo = e["pos"] = max(e["y"], previo + 18)
+    limite = 488.0
+    for e in reversed(etiquetas):
+        limite = e["pos"] = min(e["pos"], limite)
+        limite -= 18
+    etiquetas_svg = []
+    for e in etiquetas:
+        ancho_pildora = 14 + len(e["texto"]) * 6.3
+        x_pildora = 334 - ancho_pildora
+        yp = e["pos"]
+        etiquetas_svg.append(
+            f'<rect x="{x_pildora:.1f}" y="{yp - 8:.1f}" width="{ancho_pildora:.1f}" height="16" rx="8" '
+            f'fill="{e["fondo"]}" fill-opacity=".92"/>'
+            f'<text x="{x_pildora + ancho_pildora / 2:.1f}" y="{yp + 3.6:.1f}" text-anchor="middle" '
+            f'font-size="10" font-weight="700" fill="{e["tinta"]}" font-family="Arial, sans-serif">'
+            f'{e["texto"]}</text>'
+        )
+
+    html = f"""
+    <div class="gauge-panel" role="img" aria-label="Escena animada de Calamar. Nivel del río: {nivel_cm:.1f} centímetros; la muralla está a 10 metros. Peces {estado_peces_texto}.">
+      <svg class="gauge-scene" viewBox="0 0 340 500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        {_escena_fija_svg()}
+        {''.join(gente)}
+        {ola_atras}
+        {botes}
+        {agua}
+        {''.join(peces)}
+        {''.join(burbujas)}
+        {ola_frente}
+        {''.join(lineas)}
+        {regla}
+        {''.join(etiquetas_svg)}
+      </svg>
     </div>
     """
+    return _compactar_html(html)
 
 
 # ═══════════════════════════ CARGA ═══════════════════════════
@@ -869,22 +1218,16 @@ estado_peces, estado_peces_texto = clasificar_estado_peces(nivel_cm, delta_cm)
 
 edad_dias = (pd.Timestamp.now().normalize() - fecha_ult.normalize()).days
 umbrales = calcular_umbrales(df)
-limites_configurados = [v for v in umbrales["valores"].values() if v is not None]
-mayor_referencia = max([
-    float(df["Nivel_cm"].max()),
-    *limites_configurados,
-])
-escala_max_cm = max(1000, int(math.ceil(mayor_referencia / 100) * 100))
 
 col_medidor, col_lectura = st.columns([0.9, 1.1], gap="large")
 with col_medidor:
     st.markdown(
         crear_medidor_html(
-            nivel_cm, escala_max_cm, umbrales, estado_peces, estado_peces_texto
+            nivel_cm, umbrales, estado_peces, estado_peces_texto
         ),
         unsafe_allow_html=True,
     )
-    st.caption(f"Escala visual: 0–{escala_max_cm / 100:.0f} m.")
+    st.caption("Escala: 0–10 m. La muralla de Calamar está a 10 m (1000 cm).")
 
 with col_lectura:
     fecha_texto = fecha_es(ts_ult, con_hora=pd.notna(ultimo["Ultima_lectura"]))
