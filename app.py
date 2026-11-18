@@ -7,7 +7,9 @@ from __future__ import annotations
 import base64
 import io
 import math
+from itertools import combinations
 from pathlib import Path
+from statistics import median
 from urllib.parse import quote
 
 import pandas as pd
@@ -420,45 +422,57 @@ def cargar_pronostico_cuenca(hora_inicio: str) -> pd.DataFrame:
 
 def estimar_tendencia_nivel(
     niveles: pd.DataFrame,
-    precipitacion_cuenca_mm: float,
 ) -> tuple[str, str]:
-    fecha_ultima = niveles["Fecha"].iloc[-1]
+    lecturas = (
+        niveles.dropna(subset=["Fecha", "Nivel_cm"])
+        .sort_values("Fecha")
+        .drop_duplicates("Fecha", keep="last")
+    )
+    if lecturas.empty:
+        return "Sin estimación", "No hay lecturas válidas del nivel del río."
+
+    fecha_ultima = lecturas["Fecha"].iloc[-1]
     ahora = pd.Timestamp.now(tz=METEO_ZONA_HORARIA).tz_localize(None).normalize()
     dias_desactualizado = max((ahora - fecha_ultima.normalize()).days, 0)
     if dias_desactualizado > 2:
         return "Sin estimación", (
-            f"La última lectura del río tiene {dias_desactualizado} días; "
-            "no es suficientemente reciente para estimar la dirección."
+            f"La última lectura tiene {dias_desactualizado} días; "
+            "no es suficientemente reciente para describir la dirección actual."
         )
 
-    recientes = niveles[niveles["Fecha"] >= fecha_ultima - pd.Timedelta(days=3)]
-    if len(recientes) < 2:
-        return "Sin tendencia clara", "No hay suficientes lecturas recientes del río."
-
-    dias = max((recientes["Fecha"].iloc[-1] - recientes["Fecha"].iloc[0]).days, 1)
-    cambio_diario = (
-        float(recientes["Nivel_cm"].iloc[-1]) - float(recientes["Nivel_cm"].iloc[0])
-    ) / dias
-    lluvia_prevista = precipitacion_cuenca_mm >= 2
-
-    if cambio_diario > 0.5:
-        return "Posible alza", (
-            "Las últimas lecturas muestran una subida"
-            + (" y se pronostican al menos 2 mm de lluvia media en la cuenca." if lluvia_prevista else ".")
+    recientes = lecturas[lecturas["Fecha"] >= fecha_ultima - pd.Timedelta(days=3)]
+    periodo_dias = (fecha_ultima - recientes["Fecha"].iloc[0]).total_seconds() / 86400
+    if len(recientes) < 3 or periodo_dias < 2:
+        return "Señal insuficiente", (
+            "Se requieren al menos 3 lecturas distribuidas en 2 días para describir "
+            "una dirección reciente."
         )
-    if cambio_diario < -0.5:
-        if lluvia_prevista:
-            return "Incierto", (
-                "El nivel venía bajando, pero se pronostican al menos 2 mm de lluvia media "
-                "en la cuenca; podría cambiar la tendencia."
+
+    pendientes = []
+    for (_, lectura_a), (_, lectura_b) in combinations(recientes.iterrows(), 2):
+        dias_entre_lecturas = (
+            lectura_b["Fecha"] - lectura_a["Fecha"]
+        ).total_seconds() / 86400
+        if dias_entre_lecturas > 0:
+            pendientes.append(
+                (float(lectura_b["Nivel_cm"]) - float(lectura_a["Nivel_cm"]))
+                / dias_entre_lecturas
             )
-        return "Posible baja", "Las últimas lecturas muestran una bajada y se pronostica poca lluvia media en la cuenca."
-    if lluvia_prevista:
-        return "Incierto", (
-            "Las últimas lecturas no muestran una tendencia clara y se pronostican al menos "
-            "2 mm de lluvia media en la cuenca."
-        )
-    return "Sin cambio claro", "Las últimas lecturas son estables y se pronostica poca lluvia media en la cuenca."
+    if not pendientes:
+        return "Señal insuficiente", "No hay lecturas con horarios distintos para comparar."
+
+    cambio_diario = median(pendientes)
+    if cambio_diario > 0.5:
+        direccion = "Alza observada"
+    elif cambio_diario < -0.5:
+        direccion = "Baja observada"
+    else:
+        direccion = "Sin cambio claro"
+    return direccion, (
+        f"Pendiente mediana de {cambio_diario:+.1f} cm/día en {len(recientes)} lecturas "
+        "de los últimos 3 días (umbral de dirección: ±0,5 cm/día). "
+        "Es una descripción de datos observados, no una predicción."
+    )
 
 
 def crear_grafica_pronostico_cuenca(horas: pd.DataFrame) -> go.Figure:
@@ -580,12 +594,12 @@ def banner(estado: str) -> None:
         )
 
 
-def clasificar_estado_peces(nivel_cm: float, cambio_cm: float) -> tuple[str, str, str]:
+def clasificar_estado_peces(nivel_cm: float, cambio_cm: float) -> tuple[str, str]:
     if nivel_cm > 900:
-        return "scared", "asustados", "el nivel supera 900 cm"
+        return "scared", "asustados"
     if cambio_cm < 0:
-        return "uncomfortable", "incómodos", "el nivel está bajando"
-    return "calm", "tranquilos", "el nivel no está bajando"
+        return "uncomfortable", "incómodos"
+    return "calm", "tranquilos"
 
 
 def crear_medidor_html(
@@ -797,7 +811,7 @@ previo = df.iloc[-2]
 dias_diff = (fecha_ult - previo["Fecha"]).days
 delta_cm = nivel_cm - float(previo["Nivel_cm"])
 ref_txt = "el día anterior" if dias_diff == 1 else f"el {fecha_es(previo['Fecha'])}"
-estado_peces, estado_peces_texto, motivo_peces = clasificar_estado_peces(nivel_cm, delta_cm)
+estado_peces, estado_peces_texto = clasificar_estado_peces(nivel_cm, delta_cm)
 
 edad_dias = (pd.Timestamp.now().normalize() - fecha_ult.normalize()).days
 umbrales = calcular_umbrales(df)
@@ -817,7 +831,6 @@ with col_medidor:
         unsafe_allow_html=True,
     )
     st.caption(f"Escala visual: 0–{escala_max_cm / 100:.0f} m.")
-    st.caption(f"Peces {estado_peces_texto}: {motivo_peces}. Animación ilustrativa.")
 
 with col_lectura:
     fecha_texto = fecha_es(ts_ult, con_hora=pd.notna(ultimo["Ultima_lectura"]))
@@ -945,7 +958,7 @@ if datos_fews is not None:
     )
 
 # ═══════════════════════ METEOROLOGÍA Y TENDENCIA ═══════════════════════
-st.subheader("Lluvia aguas arriba y tendencia del río · próximas 24 horas")
+st.subheader("Lluvia prevista y tendencia observada del río")
 st.caption(
     "La lluvia se calcula para toda el área hidrográfica Magdalena-Cauca: promedio espacial "
     "ponderado por el área de sus 105 subzonas IDEAM, acumulado para las próximas 24 horas."
@@ -957,13 +970,16 @@ try:
         pronostico_horario = cargar_pronostico_cuenca(tiempo_actual["time"])
 except (requests.RequestException, ValueError) as exc:
     st.error(f"No se pudo actualizar el pronóstico meteorológico local o de la cuenca: {exc}")
-    st.caption("La tendencia combinada no está disponible sin el pronóstico de lluvia para la cuenca.")
+    st.caption(
+        "La lluvia prevista no está disponible. La dirección observada del río se calcula "
+        "independientemente, a partir de las lecturas recientes."
+    )
+    tendencia, motivo_tendencia = estimar_tendencia_nivel(df)
+    st.metric("Dirección observada · 3 días", tendencia)
+    st.caption(motivo_tendencia)
 else:
     lluvia_media_total = float(pronostico_horario["Precipitacion_mm"].sum())
-    tendencia, motivo_tendencia = estimar_tendencia_nivel(
-        df,
-        lluvia_media_total,
-    )
+    tendencia, motivo_tendencia = estimar_tendencia_nivel(df)
     clima, lluvia, nivel_futuro = st.columns(3)
     with clima:
         clima.metric("Condición en Calamar", describir_tiempo(int(tiempo_actual["weather_code"])))
@@ -973,7 +989,7 @@ else:
             f"viento {float(tiempo_actual['wind_speed_10m']):.0f} km/h"
         )
     lluvia.metric("Lluvia media acumulada · cuenca · 24 h", f"{lluvia_media_total:.1f} mm")
-    nivel_futuro.metric("Tendencia cualitativa · 24 h", tendencia)
+    nivel_futuro.metric("Dirección observada · 3 días", tendencia)
 
     area_cuenca_km2 = float(subzonas_cuenca["Area_km2"].sum())
     area_cuenca_formateada = f"{area_cuenca_km2:,.0f}".replace(",", ".")
@@ -986,14 +1002,13 @@ else:
     st.markdown(
         f"""
         <div class="forecast-note">
-          <div class="eyebrow">LECTURA DE LA ESTIMACIÓN</div>
+          <div class="eyebrow">LECTURA DE LOS DATOS OBSERVADOS</div>
           <p>{motivo_tendencia}</p>
           <p class="forecast-caveat">
-            Indicador cualitativo, no pronóstico hidrológico oficial. Combina las lecturas
-            recientes con la precipitación media areal pronosticada para el área hidrográfica
-            Magdalena-Cauca. La zonificación completa no delimita el aporte exacto al limnímetro
-            ni modela escorrentía, caudales, tiempos de tránsito o embalses; la lluvia no implica
-            un cambio inmediato del nivel en Calamar.
+            La dirección resume la serie reciente de Calamar; no pronostica el nivel de las
+            próximas 24 horas. La lluvia se estima para toda la cuenca Magdalena-Cauca y no permite
+            inferir por sí sola el cambio del río en esta estación: no se modelan el aporte local,
+            la escorrentía, los caudales, los tiempos de tránsito ni la operación de embalses.
           </p>
         </div>
         """,
