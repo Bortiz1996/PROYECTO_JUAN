@@ -1076,9 +1076,8 @@ st.caption(
 fig = go.Figure(go.Scatter(
     x=datos_grafica["Fecha"], y=datos_grafica["Nivel_cm"],
     name="Nivel observado (cm)",
-    mode="lines+markers" if len(datos_grafica) <= 2000 else "lines",
+    mode="lines",
     line=dict(color="#167f94", width=1.2),
-    marker=dict(size=3, color="#167f94", line=dict(color="#fff", width=0.6)),
     customdata=datos_grafica[["FechaTxt", "Fuente"]],
     hovertemplate=(
         "<b>%{customdata[0]}</b><br>Nivel: <b>%{y:.1f} cm</b>"
