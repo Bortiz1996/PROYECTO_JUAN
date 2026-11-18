@@ -543,22 +543,39 @@ def crear_grafica_pronostico_cuenca(horas: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def limpiar_niveles(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
+    df["Nivel_cm"] = pd.to_numeric(df["Nivel_cm"], errors="coerce")
+    df["Nivel_cm"] = df["Nivel_cm"].replace([float("inf"), float("-inf")], pd.NA)
+    df = df.dropna(subset=["Fecha", "Nivel_cm"]).copy()
+    df["Nivel_cm"] = df["Nivel_cm"].astype(float)
+    escala_x100 = (
+        df["Nivel_cm"].abs().gt(2000)
+        & df["Nivel_cm"].abs().le(200_000)
+    )
+    df.loc[escala_x100, "Nivel_cm"] /= 100
+    return df[df["Nivel_cm"].between(0, 2000)].reset_index(drop=True)
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def cargar_datos(path: str, mtime: float) -> pd.DataFrame:
     df = pd.read_csv(path)
-    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
-    df["Nivel_cm"] = pd.to_numeric(df["Nivel_cm"], errors="coerce")
-    df["Fuente"] = "IDEAM · histórico"
+    df["Fuente"] = "Histórico IDEAM"
     if "Ultima_lectura" in df.columns:
         df["Ultima_lectura"] = pd.to_datetime(df["Ultima_lectura"], errors="coerce")
     else:
         df["Ultima_lectura"] = pd.NaT
-    return df.dropna(subset=["Fecha", "Nivel_cm"]).sort_values("Fecha").reset_index(drop=True)
+    return limpiar_niveles(df).sort_values("Fecha").reset_index(drop=True)
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def cargar_nivel_fews_calamar() -> pd.DataFrame:
-    respuesta = requests.get(FEWS_NIVEL_URL, timeout=(10, 30))
+    respuesta = requests.get(
+        FEWS_NIVEL_URL,
+        headers={"User-Agent": "JUAN-RioCalamar/1.0 (Streamlit; IDEAM FEWS viewer)"},
+        timeout=(5, 12),
+    )
     respuesta.raise_for_status()
     datos = pd.read_csv(
         io.BytesIO(respuesta.content),
@@ -572,15 +589,14 @@ def cargar_nivel_fews_calamar() -> pd.DataFrame:
         raise ValueError("FEWS devolvió un formato de serie consolidada no reconocido.")
     datos = datos[datos["ID_ESTACION"] == f"00{ESTACION_CODIGO}"].copy()
     datos = datos.rename(columns={"FECHA_HORA": "Fecha", "NIVEL_INST": "Nivel_m"})
-    datos["Fecha"] = pd.to_datetime(datos["Fecha"], errors="coerce")
     datos["Nivel_m"] = pd.to_numeric(datos["Nivel_m"], errors="coerce")
     datos["Nivel_cm"] = datos["Nivel_m"] * 100
-    datos = datos.dropna(subset=["Fecha", "Nivel_cm"])
-    datos = datos[datos["Nivel_cm"].between(0, 2000)]
+    datos = limpiar_niveles(datos)
     if datos.empty:
         raise ValueError("FEWS no devolvió lecturas válidas de nivel para Calamar.")
     datos["Ultima_lectura"] = datos["Fecha"]
-    datos["Fuente"] = "FEWS IDEAM · serie consolidada"
+    datos["Fuente"] = "FEWS"
+    datos["Consultado_en"] = pd.Timestamp.now()
     return datos.sort_values("Fecha").reset_index(drop=True)
 
 
@@ -820,13 +836,21 @@ error_fews: Exception | None = None
 try:
     with st.spinner("Consultando la serie de nivel de FEWS IDEAM..."):
         datos_fews = cargar_nivel_fews_calamar()
-except (requests.RequestException, pd.errors.ParserError, pd.errors.EmptyDataError, ValueError) as exc:
+except (
+    requests.RequestException,
+    pd.errors.ParserError,
+    pd.errors.EmptyDataError,
+    UnicodeError,
+    ValueError,
+) as exc:
     error_fews = exc
 if datos_fews is not None:
-    lecturas_nuevas = datos_fews[datos_fews["Fecha"] > df["Fecha"].max()]
-    if not lecturas_nuevas.empty:
-        df = pd.concat([df, lecturas_nuevas], ignore_index=True, sort=False)
-        df = df.sort_values("Fecha").reset_index(drop=True)
+    df = pd.concat([df, datos_fews], ignore_index=True, sort=False)
+    df = (
+        df.drop_duplicates(subset=["Fecha"], keep="last")
+        .sort_values("Fecha")
+        .reset_index(drop=True)
+    )
 if len(df) < 2:
     st.warning("Hay muy pocos datos para mostrar el tablero.")
     st.stop()
@@ -895,7 +919,7 @@ if edad_dias > DIAS_MAX_SIN_DATOS:
 st.subheader("Visor FEWS IDEAM · Calamar")
 st.caption(
     "Ubicación de la estación y serie consolidada de nivel observado publicada por FEWS IDEAM. "
-    "La publicación puede tener retraso; no es una medición en tiempo real."
+    "Las lecturas de FEWS son preliminares, pueden ser corregidas y no son una medición en tiempo real."
 )
 mapa_estacion = pd.DataFrame(
     [
@@ -908,13 +932,13 @@ mapa_estacion = pd.DataFrame(
     ]
 )
 boton_actualizar, enlace_fews = st.columns(2)
-if boton_actualizar.button("Consultar FEWS ahora", key="consultar_fews"):
+if boton_actualizar.button("Actualizar ahora", key="consultar_fews"):
     cargar_nivel_fews_calamar.clear()
     st.rerun()
 enlace_fews.link_button("Abrir visor FEWS nacional", FEWS_VISOR_URL, width="stretch")
 
 if error_fews is not None:
-    st.error(f"No se pudo cargar la serie FEWS de Calamar: {error_fews}")
+    st.caption("No se pudo consultar FEWS; mostrando el último dato guardado.")
 
 mapa_col, nivel_col = st.columns([1.2, 0.8], gap="large")
 with mapa_col:
@@ -937,6 +961,10 @@ with nivel_col:
         lectura_fews = datos_fews.iloc[-1]
         st.metric("Último nivel observado FEWS", f"{lectura_fews['Nivel_cm']:.1f} cm")
         st.caption(f"Fecha de lectura: {fecha_es(lectura_fews['Fecha'], con_hora=True)}")
+        st.caption(
+            "Consulta FEWS: "
+            f"{fecha_es(datos_fews['Consultado_en'].iloc[0], con_hora=True)}"
+        )
         st.caption("Serie consolidada · unidad original: metros, convertida a centímetros.")
     st.markdown(
         "[Abrir ubicación en OpenStreetMap]"
@@ -981,7 +1009,7 @@ if datos_fews is not None:
     )
     st.caption(
         f"Fuente: [FEWS IDEAM]({FEWS_VISOR_URL}). "
-        "La consulta se conserva en caché durante 15 minutos."
+        "La consulta se conserva en caché durante 5 minutos."
     )
 
 # ═══════════════════════ METEOROLOGÍA Y TENDENCIA ═══════════════════════
@@ -1125,12 +1153,32 @@ except TypeError:   # versiones antiguas de Streamlit
     st.plotly_chart(fig, use_container_width=True, config=cfg)
 
 with st.expander("Consultar las últimas 30 lecturas"):
-    recientes = df.tail(30).copy()
-    recientes["Fecha"] = recientes.apply(
-        lambda fila: fecha_es(fila["Fecha"], con_hora=fila["Fuente"].startswith("FEWS")),
+    recientes = df.copy()
+    recientes["Fecha y hora"] = recientes.apply(
+        lambda fila: fila["Ultima_lectura"]
+        if pd.notna(fila["Ultima_lectura"])
+        else fila["Fecha"],
         axis=1,
     )
-    st.dataframe(recientes, hide_index=True, width="stretch")
+    recientes = recientes.sort_values("Fecha y hora", ascending=False).head(30)
+    recientes["Fecha y hora"] = recientes["Fecha y hora"].map(
+        lambda fecha: fecha_es(fecha, con_hora=True)
+    )
+    st.dataframe(
+        recientes[["Fecha y hora", "Nivel_cm", "Fuente"]].rename(
+            columns={"Nivel_cm": "Nivel (cm)"}
+        ),
+        hide_index=True,
+        width="stretch",
+    )
+    st.caption(f"Hora de última lectura: {fecha_es(ts_ult, con_hora=True)}")
+    if datos_fews is not None:
+        st.caption(
+            "FEWS consultado: "
+            f"{fecha_es(datos_fews['Consultado_en'].iloc[0], con_hora=True)}."
+        )
+    else:
+        st.caption("No se pudo consultar FEWS; mostrando el último dato guardado.")
 
 with st.expander("Ver umbrales usados"):
     for k, (_, nombre) in estilos.items():
@@ -1156,7 +1204,8 @@ st.caption(
     f"estación limnimétrica {ESTACION_CODIGO} – Calamar, Bolívar. "
     "El histórico local muestra nivel medio diario y las últimas observaciones FEWS pueden ser intradiarias. "
     "El histórico local se intenta actualizar tres veces al día y la consulta FEWS se conserva "
-    "en caché durante 15 minutos; el IDEAM puede publicar los datos con retraso y corregirlos después. "
+    "en caché durante 5 minutos; las lecturas FEWS son preliminares y el IDEAM puede publicarlas "
+    "con retraso o corregirlas después. "
     "Esta herramienta es informativa y **no reemplaza** los avisos "
     "oficiales del IDEAM, la UNGRD ni del Consejo Municipal de Gestión del Riesgo."
 )
