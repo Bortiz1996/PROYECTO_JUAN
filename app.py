@@ -475,6 +475,28 @@ def estimar_tendencia_nivel(
     )
 
 
+def aplicar_estilo_grafica(fig: go.Figure) -> None:
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#ffffff",
+        font=dict(family="Arial, sans-serif", color="#455d6b", size=12),
+    )
+    estilo_ejes = {
+        "gridcolor": "#e6ebee",
+        "gridwidth": 0.6,
+        "zeroline": False,
+        "showline": True,
+        "linecolor": "#aebbc2",
+        "linewidth": 0.8,
+        "ticks": "outside",
+        "tickcolor": "#aebbc2",
+        "tickwidth": 0.8,
+        "ticklen": 3,
+    }
+    fig.update_xaxes(**estilo_ejes)
+    fig.update_yaxes(**estilo_ejes)
+
+
 def crear_grafica_pronostico_cuenca(horas: pd.DataFrame) -> go.Figure:
     fig = go.Figure(
         go.Scatter(
@@ -482,34 +504,30 @@ def crear_grafica_pronostico_cuenca(horas: pd.DataFrame) -> go.Figure:
             y=horas["Precipitacion_mm"].cumsum(),
             name="Lluvia media acumulada",
             mode="lines+markers",
-            line=dict(color="#167f94", width=2.5),
-            marker=dict(size=5),
+            line=dict(color="#167f94", width=1.2),
+            marker=dict(size=3),
             fill="tozeroy",
-            fillcolor="rgba(22, 127, 148, 0.12)",
+            fillcolor="rgba(22, 127, 148, 0.07)",
             hovertemplate="%{y:.1f} mm<extra></extra>",
         )
     )
     fig.update_layout(
         height=300,
         margin=dict(l=8, r=8, t=18, b=8),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#ffffff",
         hovermode="x unified",
         legend=dict(orientation="h", y=1.12, x=0),
-        font=dict(family="Arial, sans-serif", color="#455d6b"),
     )
     fig.update_xaxes(
         title_text="Hora local",
         tickformat="%H:%M",
-        gridcolor="#edf1f3",
         fixedrange=True,
     )
     fig.update_yaxes(
         title_text="Precipitación media acumulada (mm)",
         rangemode="tozero",
-        gridcolor="#edf1f3",
         fixedrange=True,
     )
+    aplicar_estilo_grafica(fig)
     return fig
 
 
@@ -927,8 +945,8 @@ if datos_fews is not None:
             x=datos_fews["Fecha"],
             y=datos_fews["Nivel_cm"],
             mode="lines+markers" if len(datos_fews) <= 2000 else "lines",
-            line=dict(color="#167f94", width=2.5),
-            marker=dict(size=5, color="#167f94"),
+            line=dict(color="#167f94", width=1.2),
+            marker=dict(size=3, color="#167f94"),
             customdata=datos_fews["Fuente"],
             hovertemplate=(
                 "<b>%{x|%d %b %Y %H:%M}</b><br>Nivel: <b>%{y:.1f} cm</b>"
@@ -941,12 +959,9 @@ if datos_fews is not None:
         margin=dict(l=8, r=12, t=20, b=8),
         showlegend=False,
         hovermode="x",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#ffffff",
-        font=dict(family="Arial, sans-serif", color="#455d6b"),
-        xaxis=dict(gridcolor="#edf1f3", zeroline=False),
-        yaxis=dict(title="Nivel observado (cm)", gridcolor="#edf1f3", zeroline=False),
+        yaxis=dict(title="Nivel observado (cm)"),
     )
+    aplicar_estilo_grafica(fig_fews)
     st.plotly_chart(
         fig_fews,
         width="stretch",
@@ -1049,8 +1064,8 @@ st.caption(
 fig = go.Figure(go.Scatter(
     x=datos_grafica["Fecha"], y=datos_grafica["Nivel_cm"],
     mode="lines+markers" if len(datos_grafica) <= 2000 else "lines",
-    line=dict(color="#167f94", width=2.5),
-    marker=dict(size=5, color="#167f94", line=dict(color="#fff", width=1)),
+    line=dict(color="#167f94", width=1.2),
+    marker=dict(size=3, color="#167f94", line=dict(color="#fff", width=0.6)),
     customdata=datos_grafica[["FechaTxt", "Fuente"]],
     hovertemplate=(
         "<b>%{customdata[0]}</b><br>Nivel: <b>%{y:.1f} cm</b>"
@@ -1064,36 +1079,33 @@ for k, (color, nombre) in estilos.items():
     if val is None:
         continue
     y_vals.append(val)
-    fig.add_hline(y=val, line_dash="dot", line_color=color, line_width=2,
+    fig.add_hline(y=val, line_dash="dot", line_color=color, line_width=1,
                   annotation_text=f"{nombre} {val:.0f} cm", annotation_position="top left",
-                  annotation_font=dict(color=color, size=13))
+                  annotation_font=dict(color=color, size=11))
 y_vals.append(float(NIVEL_REFERENCIA_CM))
 fig.add_hline(
     y=NIVEL_REFERENCIA_CM,
     line_dash="dash",
     line_color="#718a98",
-    line_width=1.5,
+    line_width=1,
     annotation_text="Referencia · 950 cm",
     annotation_position="top left",
-    annotation_font=dict(color="#526b79", size=12),
+    annotation_font=dict(color="#526b79", size=11),
 )
 rango = max(y_vals) - min(y_vals)
 fig.update_layout(
     height=390, margin=dict(l=8, r=12, t=24, b=8), showlegend=False,
     hovermode="x", dragmode=False, hoverlabel=dict(font_size=16),
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#ffffff",
-    font=dict(family="Arial, sans-serif", color="#455d6b"),
     xaxis=dict(
         fixedrange=True,
         tickformat="%Y" if (datos_grafica["Fecha"].max() - datos_grafica["Fecha"].min()).days > 365 * 3 else "%d %b",
-        gridcolor="#edf1f3", zeroline=False,
     ),
     yaxis=dict(
         fixedrange=True, title="Nivel (cm)",
         range=[min(y_vals) - 0.08 * rango, max(y_vals) + 0.12 * rango],
-        gridcolor="#edf1f3", zeroline=False,
     ),
 )
+aplicar_estilo_grafica(fig)
 cfg = {"displayModeBar": False}
 try:
     st.plotly_chart(fig, width="stretch", config=cfg)
