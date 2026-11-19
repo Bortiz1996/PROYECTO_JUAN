@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import random
 from functools import lru_cache
 from itertools import combinations
@@ -17,6 +18,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -196,51 +198,6 @@ st.markdown(
         0%, 100% {transform: translateY(0);}
         50% {transform: translateY(-.7px);}
       }
-      .jn-pez-nada {animation: jn-nada-der var(--nado) linear infinite;
-        animation-delay: var(--retraso);}
-      .jn-pez--izq .jn-pez-nada {animation-name: jn-nada-izq;}
-      @keyframes jn-nada-der {
-        from {transform: translateX(-70px);}
-        to {transform: translateX(410px);}
-      }
-      @keyframes jn-nada-izq {
-        from {transform: translateX(410px);}
-        to {transform: translateX(-70px);}
-      }
-      .jn-pez-cuerpo {transform-box: fill-box; transform-origin: center;
-        animation: jn-cuerpo-calma var(--cuerpo) ease-in-out infinite;}
-      .jn-pez--incomodo .jn-pez-cuerpo {animation-name: jn-cuerpo-incomodo;}
-      .jn-pez--asustado .jn-pez-cuerpo {animation-name: jn-cuerpo-asustado;}
-      @keyframes jn-cuerpo-calma {
-        0%, 100% {transform: translateY(0) rotate(0);}
-        50% {transform: translateY(-1.8px) rotate(-2.5deg);}
-      }
-      @keyframes jn-cuerpo-incomodo {
-        0%, 100% {transform: translateY(-1px) rotate(-5deg);}
-        50% {transform: translateY(3px) rotate(6deg);}
-      }
-      @keyframes jn-cuerpo-asustado {
-        0%, 100% {transform: translateY(-3px) rotate(-11deg);}
-        50% {transform: translateY(4px) rotate(11deg);}
-      }
-      .fish-tail {transform-box: fill-box; transform-origin: right center;
-        animation: fish-tail var(--cola) ease-in-out infinite alternate;}
-      .fish-fin {transform-box: fill-box; transform-origin: center bottom;
-        animation: fish-fin var(--aleta) ease-in-out infinite alternate;}
-      @keyframes fish-tail {
-        from {transform: rotate(-28deg);}
-        to {transform: rotate(28deg);}
-      }
-      @keyframes fish-fin {
-        from {transform: rotate(-12deg) scaleY(.9);}
-        to {transform: rotate(12deg) scaleY(1.08);}
-      }
-      .jn-alerta {transform-box: fill-box; transform-origin: center;
-        animation: jn-alerta .7s ease-in-out infinite alternate;}
-      @keyframes jn-alerta {
-        from {transform: scale(.85);}
-        to {transform: scale(1.2);}
-      }
       .jn-burbuja {animation: jn-burbuja var(--dur) ease-in infinite; animation-delay: var(--delay);}
       @keyframes jn-burbuja {
         0% {transform: translateY(0); opacity: 0;}
@@ -250,12 +207,11 @@ st.markdown(
       }
       @media (prefers-reduced-motion: reduce) {
           .jn-ola, .jn-ave path, .jn-bote, .jn-camina, .jn-pierna, .jn-respira,
-          .jn-pez-cuerpo, .fish-tail, .fish-fin, .jn-alerta, .jn-burbuja {
+          .jn-burbuja {
             animation: none;
           }
           .jn-ave {display: none;}
           .jn-nube {animation: none; transform: translateX(var(--reposo));}
-          .jn-pez-nada {animation: none; transform: translateX(var(--reposo));}
           .jn-burbuja {opacity: .5;}
       }
       @media (max-width: 640px) {
@@ -296,6 +252,16 @@ def describir_tiempo(codigo: int) -> str:
     if codigo in (95, 96, 99):
         return "Tormenta"
     return "Condición variable"
+
+
+def tipo_ambiente(codigo: int | None) -> str:
+    if codigo in (95, 96, 99):
+        return "tormenta"
+    if codigo in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86):
+        return "lluvia"
+    if codigo in (2, 3, 45, 48):
+        return "nublado"
+    return "despejado"
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -725,10 +691,61 @@ def _ola_path(amplitud: float, periodo: float, ciclos: int, espesor: float = 16)
     return f"{d}V{espesor}H0Z"
 
 
-@lru_cache(maxsize=1)
-def _escena_fija_svg() -> str:
+@lru_cache(maxsize=8)
+def _escena_fija_svg(ambiente: str, noche: bool) -> str:
     """Cielo, ciudad, muralla, talud con escalera, enrocado y lecho: no dependen del nivel."""
     rng = random.Random(29037020)
+    if noche:
+        cielo = ("#111b35", "#233b51", "#425a67")
+        color_nube, opacidad_nube = "#a9bac5", (".34", ".28")
+    elif ambiente == "tormenta":
+        cielo = ("#243847", "#516775", "#8298a1")
+        color_nube, opacidad_nube = "#778995", (".98", ".82")
+    elif ambiente == "lluvia":
+        cielo = ("#526977", "#8399a2", "#b2c2c3")
+        color_nube, opacidad_nube = "#d6dee0", (".92", ".78")
+    elif ambiente == "nublado":
+        cielo = ("#5a8298", "#9eb8c3", "#d0dce0")
+        color_nube, opacidad_nube = "#f4f6f5", (".94", ".8")
+    else:
+        cielo = ("#17527c", "#6cb0d3", "#bfe0ee")
+        color_nube, opacidad_nube = "#ffffff", (".85", ".7")
+
+    if noche:
+        astro = (
+            ""
+            if ambiente in ("lluvia", "tormenta")
+            else (
+                '<g fill="#f3e7ad"><circle cx="277" cy="27" r="1.1"/>'
+                '<circle cx="305" cy="53" r=".9"/><circle cx="248" cy="65" r=".8"/>'
+                '<circle cx="326" cy="32" r="1.2"/><circle cx="222" cy="37" r=".7"/></g>'
+                '<path d="M288 27a10 10 0 1 0 13 13a8 8 0 1 1-13-13Z" fill="#f3e7ad"/>'
+            )
+        )
+    elif ambiente == "despejado":
+        astro = (
+            '<g fill="#ffe38a" stroke="#fff1bc" stroke-width="1">'
+            '<circle cx="286" cy="52" r="10"/><path d="M286 34v-6m0 48v-6m18-18h6m-48 0h6'
+            'm31-13 4-4m-34 34 4-4m0-26-4-4m34 34-4-4"/></g>'
+        )
+    else:
+        astro = ""
+    aves = [] if noche or ambiente in ("lluvia", "tormenta") else [
+        '<g class="jn-ave" style="--dur:30s;--delay:-8s"><g transform="translate(0 84)">'
+        '<path d="M0 0q3 -3.2 6 0q3 -3.2 6 0" fill="none" stroke="#173a52" stroke-width="1.2" '
+        'stroke-linecap="round"/></g></g>',
+        '<g class="jn-ave" style="--dur:38s;--delay:-21s"><g transform="translate(0 102)">'
+        '<path d="M0 0q2.5 -2.6 5 0q2.5 -2.6 5 0" fill="none" stroke="#173a52" stroke-width="1" '
+        'stroke-linecap="round"/></g></g>',
+    ]
+    luces_noche = (
+        '<g fill="#ffd982" opacity=".95"><rect x="156" y="79" width="8" height="13"/>'
+        '<rect x="176" y="105" width="8" height="13"/><rect x="80" y="108" width="5" height="9"/>'
+        '<rect x="102" y="108" width="5" height="9"/><rect x="28" y="148" width="6" height="12"/>'
+        '<rect x="170" y="138" width="7" height="14"/><rect x="200" y="138" width="7" height="14"/>'
+        '</g>'
+        if noche else ""
+    )
 
     # ── Talud: grava, hierba y surcos de erosión
     colores_grava = ("#8f7b5a", "#d3bf96", "#a08d6b", "#6f5f46")
@@ -799,8 +816,8 @@ def _escena_fija_svg() -> str:
     return "\n".join([
         '<defs>'
         '<linearGradient id="jn-cielo" x1="0" y1="0" x2="0" y2="1">'
-        '<stop offset="0" stop-color="#17527c"/><stop offset=".55" stop-color="#6cb0d3"/>'
-        '<stop offset="1" stop-color="#bfe0ee"/></linearGradient>'
+        f'<stop offset="0" stop-color="{cielo[0]}"/><stop offset=".55" stop-color="{cielo[1]}"/>'
+        f'<stop offset="1" stop-color="{cielo[2]}"/></linearGradient>'
         '<linearGradient id="jn-muro" x1="0" y1="0" x2="0" y2="1">'
         '<stop offset="0" stop-color="#e8e1ce"/><stop offset="1" stop-color="#c2b8a0"/></linearGradient>'
         '<linearGradient id="jn-talud" x1="0" y1="0" x2="0" y2="1">'
@@ -813,17 +830,18 @@ def _escena_fija_svg() -> str:
         '</defs>',
         # Cielo, título, nubes y aves
         '<rect width="340" height="200" fill="url(#jn-cielo)"/>',
+        astro,
         '<text x="20" y="27" font-size="12" font-weight="700" letter-spacing="2" fill="#ffffff" '
         'font-family="Arial, sans-serif">NIVEL DEL RÍO</text>',
         '<text x="20" y="42" font-size="9" letter-spacing="1" fill="#dcedf6" '
         f'font-family="Arial, sans-serif">CALAMAR · BOLÍVAR · IDEAM {ESTACION_CODIGO}</text>',
         '<g class="jn-nube" style="--dur:95s;--delay:-34s;--reposo:70px"><g transform="translate(0 68)">'
-        '<ellipse cx="0" cy="0" rx="24" ry="6.5" fill="#fff" opacity=".85"/>'
-        '<ellipse cx="10" cy="-5" rx="14" ry="7" fill="#fff" opacity=".9"/>'
-        '<ellipse cx="-11" cy="-3" rx="12" ry="5.5" fill="#fff" opacity=".85"/></g></g>',
+        f'<ellipse cx="0" cy="0" rx="24" ry="6.5" fill="{color_nube}" opacity="{opacidad_nube[0]}"/>'
+        f'<ellipse cx="10" cy="-5" rx="14" ry="7" fill="{color_nube}" opacity="{opacidad_nube[0]}"/>'
+        f'<ellipse cx="-11" cy="-3" rx="12" ry="5.5" fill="{color_nube}" opacity="{opacidad_nube[0]}"/></g></g>',
         '<g class="jn-nube" style="--dur:120s;--delay:-80s;--reposo:250px"><g transform="translate(0 94)">'
-        '<ellipse cx="0" cy="0" rx="19" ry="5" fill="#fff" opacity=".7"/>'
-        '<ellipse cx="8" cy="-4" rx="11" ry="5.5" fill="#fff" opacity=".75"/></g></g>',
+        f'<ellipse cx="0" cy="0" rx="19" ry="5" fill="{color_nube}" opacity="{opacidad_nube[1]}"/>'
+        f'<ellipse cx="8" cy="-4" rx="11" ry="5.5" fill="{color_nube}" opacity="{opacidad_nube[1]}"/></g></g>',
         # Ciudad: edificio trasero, edificio blanco almenado, edificio amarillo y edificio verde
         '<rect x="146" y="64" width="58" height="124" fill="#7c6a63"/>'
         '<rect x="143" y="59" width="64" height="7" fill="#cdc4b5"/>'
@@ -847,6 +865,7 @@ def _escena_fija_svg() -> str:
         f'{arcos_amarillo}'
         '<rect x="88" y="146" width="44" height="8" fill="#1f5a4a"/>'
         '<path d="M92 150h12m4 0h8m4 0h6" stroke="#e8f0d8" stroke-width="1.4"/>',
+        luces_noche,
         '<rect x="0" y="130" width="68" height="56" fill="#85c6a4"/>'
         '<rect x="0" y="126" width="68" height="5" fill="#e6f0e2"/>'
         '<rect x="0" y="116" width="68" height="2.4" fill="#f2f6ef"/>'
@@ -895,12 +914,7 @@ def _escena_fija_svg() -> str:
         f'<path d="M{x0:.1f} {y0 - 15:.1f}L{xf:.1f} {yf - 15:.1f}{postes}" stroke="#2f414c" '
         'stroke-width="1.5" fill="none" stroke-linecap="round"/>',
         # Aves
-        '<g class="jn-ave" style="--dur:30s;--delay:-8s"><g transform="translate(0 84)">'
-        '<path d="M0 0q3 -3.2 6 0q3 -3.2 6 0" fill="none" stroke="#173a52" stroke-width="1.2" '
-        'stroke-linecap="round"/></g></g>'
-        '<g class="jn-ave" style="--dur:38s;--delay:-21s"><g transform="translate(0 102)">'
-        '<path d="M0 0q2.5 -2.6 5 0q2.5 -2.6 5 0" fill="none" stroke="#173a52" stroke-width="1" '
-        'stroke-linecap="round"/></g></g>',
+        "".join(aves),
     ])
 
 
@@ -909,11 +923,559 @@ def _compactar_html(html: str) -> str:
     return "\n".join(linea.strip() for linea in html.splitlines() if linea.strip())
 
 
+def _tarullas_svg(y_superficie: float) -> str:
+    plantas = []
+    for x, escala, demora in ((72, 0.82, 0), (182, 1.0, -1.4), (292, 0.72, -2.2)):
+        plantas.append(
+            f'<g transform="translate({x} {y_superficie + 2:.1f}) scale({escala})">'
+            f'<g class="jn-tarulla" style="--delay:{demora}s">'
+            '<path d="M0 5q-5 8 -3 20m3-20q5 9 8 19m-8-19q-1 10 -1 22" '
+            'fill="none" stroke="#9ab98a" stroke-width="1" opacity=".8"/>'
+            '<ellipse cx="-8" cy="3" rx="8" ry="3.6" transform="rotate(-25 -8 3)" fill="#65a85e"/>'
+            '<ellipse cx="0" cy="1" rx="9" ry="3.8" transform="rotate(-8 0 1)" fill="#83bb64"/>'
+            '<ellipse cx="9" cy="3" rx="8" ry="3.5" transform="rotate(22 9 3)" fill="#559951"/>'
+            '<ellipse cx="-2" cy="8" rx="7" ry="3" transform="rotate(-35 -2 8)" fill="#4d8d4e"/>'
+            '<circle cx="2" cy="-2" r="2" fill="#d88aaf"/><circle cx="5" cy="-3" r="1.7" fill="#e7b5ca"/>'
+            '</g></g>'
+        )
+    return "".join(plantas)
+
+
+_MEDIDOR_CSS = """
+html, body {margin:0; padding:0; background:transparent; font-family:Arial,sans-serif;}
+.gauge-feed-wrap {width:min(100%, 340px); margin:0 auto; color:#365462;}
+.gauge-panel {position:relative; width:100%; aspect-ratio:340/500; overflow:hidden;
+  border-radius:16px; background:#1b5a85; box-shadow:0 8px 26px rgba(20,45,60,.14);}
+.gauge-scene,.gauge-overlay {position:absolute; inset:0; display:block; width:100%; height:100%;}
+.gauge-scene {z-index:0; touch-action:manipulation;}
+.fish-canvas {position:absolute; inset:0; z-index:1; display:block; width:100%; height:100%;
+  pointer-events:none;}
+.gauge-overlay {z-index:2; pointer-events:none;}
+.jn-ola {animation:jn-ola var(--dur,9s) linear infinite; animation-delay:var(--delay,0s);}
+@keyframes jn-ola {from {transform:translateX(0)} to {transform:translateX(-340px)}}
+.jn-nube {animation:jn-nube var(--dur) linear infinite; animation-delay:var(--delay);}
+@keyframes jn-nube {from {transform:translateX(-100px)} to {transform:translateX(440px)}}
+.jn-ave {animation:jn-vuelo var(--dur) linear infinite; animation-delay:var(--delay);}
+.jn-ave path {transform-box:fill-box; transform-origin:center;
+  animation:jn-aleteo .4s ease-in-out infinite alternate;}
+@keyframes jn-vuelo {from {transform:translate(-30px,0)} to {transform:translate(370px,-18px)}}
+@keyframes jn-aleteo {from {transform:scaleY(1)} to {transform:scaleY(.3)}}
+.jn-bote {transform-box:fill-box; transform-origin:center bottom;
+  animation:jn-bote var(--dur) ease-in-out infinite; animation-delay:var(--delay);}
+@keyframes jn-bote {0%,100% {transform:translateY(0) rotate(-.9deg)}
+  50% {transform:translateY(-1.6px) rotate(1deg)}}
+.jn-camina {animation:jn-camina 18s linear infinite;}
+@keyframes jn-camina {0% {transform:translateX(0) scaleX(1)}
+  47% {transform:translateX(58px) scaleX(1)} 50% {transform:translateX(58px) scaleX(-1)}
+  97% {transform:translateX(0) scaleX(-1)} 100% {transform:translateX(0) scaleX(1)}}
+.jn-pierna {transform-box:fill-box; transform-origin:center top;
+  animation:jn-paso .55s ease-in-out infinite alternate;}
+.jn-pierna + .jn-pierna {animation-direction:alternate-reverse;}
+@keyframes jn-paso {from {transform:rotate(-24deg)} to {transform:rotate(24deg)}}
+.jn-respira {animation:jn-respira 3.2s ease-in-out infinite;}
+@keyframes jn-respira {0%,100% {transform:translateY(0)} 50% {transform:translateY(-.7px)}}
+.jn-burbuja {animation:jn-burbuja var(--dur) ease-in infinite; animation-delay:var(--delay);}
+@keyframes jn-burbuja {0% {transform:translateY(0); opacity:0} 12% {opacity:.8}
+  90% {opacity:.5} 100% {transform:translateY(calc(var(--sube) * -1)); opacity:0}}
+.jn-tarulla {transform-box:fill-box; transform-origin:center bottom;
+  animation:jn-tarulla 4.8s ease-in-out infinite; animation-delay:var(--delay);}
+@keyframes jn-tarulla {0%,100% {transform:translateY(0) rotate(-2deg)}
+  50% {transform:translateY(-2px) rotate(2deg)}}
+.jn-gota-lluvia {animation:jn-caida .8s linear infinite; animation-delay:var(--delay);}
+@keyframes jn-caida {from {transform:translateY(-12px); opacity:0}
+  20% {opacity:.8} to {transform:translateY(16px); opacity:0}}
+.jn-relampago {animation:jn-relampago 5s steps(1,end) infinite;}
+@keyframes jn-relampago {0%,94%,97%,100% {opacity:0} 95%,96% {opacity:.9}}
+.jn-alimento {fill:#f4d36d; stroke:#fff4bb; stroke-width:1;
+  animation:jn-comida 1.8s ease-out forwards; pointer-events:none;}
+@keyframes jn-comida {0% {transform:translateY(-18px); opacity:0}
+  20% {opacity:1} 100% {transform:translateY(0); opacity:.95}}
+.jn-ondas-comida {fill:none; stroke:#d4ffff; stroke-width:1.5;
+  transform-box:fill-box; transform-origin:center; animation:jn-ondas 1.1s ease-out forwards;}
+@keyframes jn-ondas {from {transform:scale(.2); opacity:.9} to {transform:scale(2.4); opacity:0}}
+@media (prefers-reduced-motion:reduce) {
+  .jn-ola,.jn-ave path,.jn-bote,.jn-camina,.jn-pierna,.jn-respira,
+  .jn-burbuja,.jn-tarulla,.jn-gota-lluvia,.jn-relampago {
+    animation:none;
+  }
+  .jn-ave {display:none;} .jn-nube {animation:none; transform:translateX(var(--reposo));}
+}
+"""
+
+_MEDIDOR_SCRIPT = """
+<script>
+(() => {
+  const svg = document.querySelector(".gauge-scene");
+  const panel = document.querySelector(".gauge-panel");
+  if (!svg || !panel) return;
+  const superficie = Number(svg.dataset.superficie);
+  const convertir = (x, y) => {
+    const punto = svg.createSVGPoint();
+    punto.x = x;
+    punto.y = y;
+    return punto;
+  };
+  const puntoLocal = (x, y) =>
+    convertir(x, y).matrixTransform(svg.getScreenCTM().inverse());
+  function alimentar(x, y) {
+    x = Math.max(50, Math.min(325, x));
+    y = Math.max(superficie + 8, Math.min(466, y));
+    const comida = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    comida.setAttribute("class", "jn-alimento");
+    comida.setAttribute("cx", x);
+    comida.setAttribute("cy", y);
+    comida.setAttribute("r", "4");
+    svg.appendChild(comida);
+    const onda = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    onda.setAttribute("class", "jn-ondas-comida");
+    onda.setAttribute("cx", x);
+    onda.setAttribute("cy", y);
+    onda.setAttribute("r", "7");
+    svg.appendChild(onda);
+    panel.dispatchEvent(new CustomEvent("fish-feed", {detail: {x, y}}));
+    window.setTimeout(() => { comida.remove(); onda.remove(); }, 2100);
+  }
+  panel.addEventListener("pointerdown", (evento) => {
+    evento.preventDefault();
+    const punto = puntoLocal(evento.clientX, evento.clientY);
+    alimentar(punto.x, punto.y);
+  });
+})();
+</script>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+
+(() => {
+  const panel = document.querySelector(".gauge-panel");
+  const svg = document.querySelector(".gauge-scene");
+  const canvasInicial = document.querySelector(".fish-canvas");
+  const datos = document.querySelector("#fish-data");
+  if (!panel || !svg || !canvasInicial || !datos) return;
+
+  const perfiles = JSON.parse(datos.textContent);
+  const superficie = Number(svg.dataset.superficie);
+  const estado = svg.dataset.estadoPeces;
+  const movimiento = {
+    calm: {velocidad: 15, amplitud: 0.55, reaccion: 1.0},
+    uncomfortable: {velocidad: 23, amplitud: 1.0, reaccion: 1.35},
+    scared: {velocidad: 31, amplitud: 1.45, reaccion: 1.75},
+  }[estado];
+  const reducido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const paletas = {
+    bocachico: {cuerpo: 0xe7b34f, lomo: 0xb86c35, vientre: 0xf6e3b2, aleta: 0xc77a32, raya: 0xa65e30},
+    bagre: {cuerpo: 0x79aba2, lomo: 0x376b70, vientre: 0xc9ded2, aleta: 0x4b7f82, raya: 0x426f70},
+    mojarra: {cuerpo: 0xe89b5d, lomo: 0x9b5438, vientre: 0xffe3b1, aleta: 0xdf7148, raya: 0xa75e43},
+    sabalo: {cuerpo: 0xa7c7c7, lomo: 0x567b88, vientre: 0xedf0dd, aleta: 0x719b9d, raya: 0x638d95},
+    doncella: {cuerpo: 0xb3a184, lomo: 0x665543, vientre: 0xead8b9, aleta: 0x806950, raya: 0x665543},
+    pacora: {cuerpo: 0xafc7b6, lomo: 0x637c74, vientre: 0xe7e6cc, aleta: 0xcf8b4e, raya: 0x718c7e},
+    capaz: {cuerpo: 0x9bb9b4, lomo: 0x526b70, vientre: 0xe8eee1, aleta: 0x758d89, raya: 0x5c7776},
+  };
+  const escena = new THREE.Scene();
+  const camara = new THREE.OrthographicCamera(-170, 170, 250, -250, 0.1, 100);
+  camara.position.set(0, 0, 50);
+  camara.lookAt(0, 0, 0);
+  escena.add(new THREE.AmbientLight(0xd8f2f5, 1.45));
+  const solAgua = new THREE.DirectionalLight(0xffedc4, 2.2);
+  solAgua.position.set(-80, 120, 110);
+  escena.add(solAgua);
+  const reflejoAgua = new THREE.PointLight(0x75e7ed, 36, 420);
+  reflejoAgua.position.set(95, 55, 35);
+  escena.add(reflejoAgua);
+
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
+  } catch (error) {
+    console.error("No se pudo iniciar el hábitat 3D de peces.", error);
+    return;
+  }
+  renderer.domElement.className = "fish-canvas";
+  renderer.domElement.setAttribute("aria-hidden", "true");
+  canvasInicial.replaceWith(renderer.domElement);
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
+
+  function material(color, roughness = 0.43, metalness = 0.02) {
+    return new THREE.MeshStandardMaterial({
+      color, roughness, metalness, side: THREE.DoubleSide,
+    });
+  }
+
+  function extruirAleta(puntos, color) {
+    const forma = new THREE.Shape();
+    forma.moveTo(puntos[0][0], puntos[0][1]);
+    for (const [x, y] of puntos.slice(1)) forma.lineTo(x, y);
+    forma.closePath();
+    const geometria = new THREE.ExtrudeGeometry(forma, {
+      depth: 0.16, bevelEnabled: true, bevelSegments: 2,
+      bevelSize: 0.035, bevelThickness: 0.035, steps: 1,
+    });
+    geometria.translate(0, 0, -0.08);
+    return new THREE.Mesh(geometria, material(color, 0.55));
+  }
+
+  function agregarTubo(grupo, puntos, color, radio = 0.24) {
+    const curva = new THREE.CatmullRomCurve3(
+      puntos.map(([x, y, z]) => new THREE.Vector3(x, y, z))
+    );
+    const malla = new THREE.Mesh(
+      new THREE.TubeGeometry(curva, 12, radio, 5, false),
+      material(color, 0.62)
+    );
+    grupo.add(malla);
+  }
+
+  function crearPez(perfil, indice) {
+    const paleta = paletas[perfil.especie];
+    const largo = perfil.largo;
+    const alto = perfil.alto;
+    const medioLargo = largo * 0.36;
+    const medioAlto = alto * 0.40;
+    const medioAncho = alto * 0.19;
+    const pez = new THREE.Group();
+    const cuerpoGeometria = new THREE.SphereGeometry(1, 28, 18);
+    const vertices = cuerpoGeometria.attributes.position;
+    const originales = new Float32Array(vertices.array.length);
+    const colores = new Float32Array(vertices.count * 3);
+    const base = new THREE.Color(paleta.cuerpo);
+    const lomo = new THREE.Color(paleta.lomo);
+    const vientre = new THREE.Color(paleta.vientre);
+    const colorVertice = new THREE.Color();
+
+    for (let i = 0; i < vertices.count; i++) {
+      const offset = i * 3;
+      const nx = vertices.array[offset];
+      const ny = vertices.array[offset + 1];
+      const nz = vertices.array[offset + 2];
+      const estrechamiento = 0.68 + 0.32 * Math.sqrt(Math.max(0, 1 - nx * nx));
+      vertices.array[offset] = nx * medioLargo;
+      vertices.array[offset + 1] = ny * medioAlto * estrechamiento;
+      vertices.array[offset + 2] = nz * medioAncho * estrechamiento;
+      originales[offset] = vertices.array[offset];
+      originales[offset + 1] = vertices.array[offset + 1];
+      originales[offset + 2] = vertices.array[offset + 2];
+
+      if (ny > 0.12) colorVertice.copy(base).lerp(lomo, Math.min(0.82, (ny - 0.12) * 0.9));
+      else if (ny < -0.18) colorVertice.copy(base).lerp(vientre, Math.min(0.9, (-ny - 0.18) * 1.1));
+      else colorVertice.copy(base);
+      colorVertice.toArray(colores, offset);
+    }
+    cuerpoGeometria.setAttribute("color", new THREE.BufferAttribute(colores, 3));
+    cuerpoGeometria.computeVertexNormals();
+    const cuerpo = new THREE.Mesh(
+      cuerpoGeometria,
+      new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.36, metalness: 0.035})
+    );
+    cuerpo.name = "body";
+    cuerpo.position.x = -medioLargo * 0.04;
+    pez.add(cuerpo);
+
+    const cabeza = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 20, 14),
+      material(paleta.cuerpo, 0.34, 0.025)
+    );
+    cabeza.scale.set(medioLargo * 0.50, medioAlto * 0.72, medioAncho * 0.83);
+    cabeza.position.set(medioLargo * 0.57, medioAlto * 0.02, 0);
+    pez.add(cabeza);
+
+    const ojoBlanco = material(0xfff8e8, 0.28);
+    const pupila = material(0x102a38, 0.2);
+    const brillo = material(0xffffff, 0.18);
+    for (const lado of [-1, 1]) {
+      const ojo = new THREE.Mesh(new THREE.SphereGeometry(0.92, 12, 10), ojoBlanco);
+      ojo.scale.set(0.85, 0.78, 0.38);
+      ojo.position.set(medioLargo * 0.76, medioAlto * 0.23, lado * medioAncho * 0.70);
+      pez.add(ojo);
+      const centroPupila = new THREE.Mesh(new THREE.SphereGeometry(0.48, 10, 8), pupila);
+      centroPupila.scale.set(0.9, 0.95, 0.55);
+      centroPupila.position.set(
+        medioLargo * 0.80, medioAlto * 0.24, lado * (medioAncho * 0.77)
+      );
+      pez.add(centroPupila);
+      const puntoLuz = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), brillo);
+      puntoLuz.position.set(medioLargo * 0.82, medioAlto * 0.29, lado * medioAncho * 0.82);
+      pez.add(puntoLuz);
+    }
+
+    const superficieCuerpo = (nx, ny) => {
+      const t = 0.68 + 0.32 * Math.sqrt(Math.max(0, 1 - nx * nx));
+      return [
+        nx * medioLargo - medioLargo * 0.04,
+        ny * medioAlto * t,
+        medioAncho * t * Math.sqrt(Math.max(0.02, 1 - nx * nx - ny * ny)) * 1.025,
+      ];
+    };
+    agregarTubo(pez, [
+      superficieCuerpo(0.42, 0.52),
+      superficieCuerpo(0.46, 0),
+      superficieCuerpo(0.42, -0.54),
+    ], paleta.raya, 0.22);
+    agregarTubo(pez, [
+      superficieCuerpo(-0.74, 0.02),
+      superficieCuerpo(-0.15, 0.02),
+      superficieCuerpo(0.38, 0.02),
+    ], paleta.lomo, 0.16);
+    for (const raya of perfil.rayas) {
+      agregarTubo(pez, [
+        superficieCuerpo(raya, 0.66),
+        superficieCuerpo(raya, 0),
+        superficieCuerpo(raya, -0.62),
+      ], paleta.raya, 0.36);
+    }
+
+    const aletaDorsal = new THREE.Group();
+    aletaDorsal.name = "dorsal";
+    aletaDorsal.position.set(-medioLargo * 0.02, medioAlto * 0.63, 0);
+    aletaDorsal.add(extruirAleta([
+      [-largo * 0.16, 0], [-largo * 0.08, alto * 0.40],
+      [largo * 0.01, alto * 0.31], [largo * 0.14, 0],
+    ], paleta.aleta));
+    pez.add(aletaDorsal);
+
+    const aletaAnal = extruirAleta([
+      [-largo * 0.16, 0], [-largo * 0.04, -alto * 0.24],
+      [largo * 0.10, 0],
+    ], paleta.aleta);
+    aletaAnal.position.set(-medioLargo * 0.48, -medioAlto * 0.62, medioAncho * 0.2);
+    pez.add(aletaAnal);
+
+    const cola = new THREE.Group();
+    cola.name = "tail";
+    cola.position.set(-medioLargo * 0.92, 0, 0);
+    cola.add(extruirAleta([
+      [0, 0], [-largo * 0.25, alto * 0.32],
+      [-largo * 0.17, 0], [-largo * 0.25, -alto * 0.32],
+    ], paleta.aleta));
+    pez.add(cola);
+
+    const pectorales = [];
+    for (const lado of [-1, 1]) {
+      const pectoral = new THREE.Group();
+      pectoral.name = `pectoral-${lado}`;
+      pectoral.position.set(medioLargo * 0.05, -medioAlto * 0.07, lado * medioAncho * 0.82);
+      pectoral.add(extruirAleta([
+        [0, 0], [-largo * 0.15, -alto * 0.29],
+        [largo * 0.07, -alto * 0.20],
+      ], paleta.aleta));
+      pez.add(pectoral);
+      pectorales.push(pectoral);
+    }
+
+    if (["bagre", "doncella", "capaz"].includes(perfil.especie)) {
+      for (const lado of [-1, 1]) {
+        agregarTubo(pez, [
+          [medioLargo * 0.87, -medioAlto * 0.08, lado * medioAncho * 0.48],
+          [medioLargo * 1.02, -medioAlto * 0.23, lado * medioAncho * 0.63],
+          [medioLargo * 1.17, -medioAlto * 0.25, lado * medioAncho * 0.72],
+        ], paleta.vientre, 0.17);
+      }
+    }
+
+    const pantallaY = 466 - perfil.profundidad / 100 * (466 - superficie);
+    const minY = superficie + alto * 0.6 + 7;
+    const maxY = 466 - alto * 0.65;
+    const y = THREE.MathUtils.clamp(pantallaY, minY, Math.max(minY, maxY));
+    pez.position.set(perfil.x - 170, 250 - y, (indice % 3) * 0.12);
+    escena.add(pez);
+    return {
+      group: pez, geometry: cuerpoGeometria, baseVertices: originales,
+      vertices: cuerpoGeometria.attributes.position, tail: cola,
+      dorsal: aletaDorsal, pectorals: pectorales, baseY: y,
+      height: alto, length: largo, minY, maxY: Math.max(minY, maxY),
+      phase: perfil.fase, speedFactor: perfil.velocidad, target: null, wrapGhost: null,
+    };
+  }
+
+  const peces = perfiles.map(crearPez);
+  const anchoEscena = 340;
+  const limiteInferior = 466;
+  const limiteSuperior = superficie + 20;
+  const intensidadMovimiento = reducido ? 0.25 : 1;
+
+  function copiarArticulacion(pez, fantasma) {
+    fantasma.position.copy(pez.group.position);
+    fantasma.position.x -= anchoEscena;
+    fantasma.rotation.copy(pez.group.rotation);
+    fantasma.getObjectByName("tail").rotation.copy(pez.tail.rotation);
+    fantasma.getObjectByName("dorsal").rotation.copy(pez.dorsal.rotation);
+    for (const lado of [-1, 1]) {
+      fantasma.getObjectByName(`pectoral-${lado}`).rotation.copy(
+        pez.pectorals[lado === -1 ? 0 : 1].rotation
+      );
+    }
+  }
+
+  function adoptarFantasma(pez) {
+    escena.remove(pez.group);
+    pez.group = pez.wrapGhost;
+    pez.wrapGhost = null;
+    pez.tail = pez.group.getObjectByName("tail");
+    pez.dorsal = pez.group.getObjectByName("dorsal");
+    pez.pectorals = [-1, 1].map((lado) => pez.group.getObjectByName(`pectoral-${lado}`));
+    if (pez.target && pez.target.wrap) {
+      pez.target.x -= anchoEscena;
+      pez.target.wrap = false;
+    }
+  }
+
+  function redimensionar() {
+    const caja = panel.getBoundingClientRect();
+    if (!caja.width || !caja.height) return;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(caja.width, caja.height, false);
+  }
+  if (window.ResizeObserver) new ResizeObserver(redimensionar).observe(panel);
+  else window.addEventListener("resize", redimensionar);
+  redimensionar();
+
+  let tiempoPrevio = performance.now();
+  let tiempo = 0;
+  function animar(marca) {
+    requestAnimationFrame(animar);
+    const delta = Math.min((marca - tiempoPrevio) / 1000, 0.04);
+    tiempoPrevio = marca;
+    tiempo += delta;
+    const potencia = movimiento.amplitud * (reducido ? 0.2 : 1);
+
+    for (const pez of peces) {
+      const faseNado = tiempo * (2.4 + pez.speedFactor * 0.45) + pez.phase * Math.PI * 2;
+      const posiciones = pez.vertices;
+      for (let i = 0; i < posiciones.count; i++) {
+        const offset = i * 3;
+        const x = pez.baseVertices[offset];
+        const dorsalidad = Math.max(0, -x / (pez.length * 0.36));
+        const onda = Math.sin(faseNado - x * 0.22) * pez.height * 0.055 * potencia * dorsalidad ** 1.5;
+        posiciones.array[offset] = pez.baseVertices[offset];
+        posiciones.array[offset + 1] = pez.baseVertices[offset + 1] + onda;
+        posiciones.array[offset + 2] = pez.baseVertices[offset + 2]
+          + Math.cos(faseNado - x * 0.22) * pez.height * 0.018 * potencia * dorsalidad;
+      }
+      posiciones.needsUpdate = true;
+      pez.geometry.computeVertexNormals();
+      pez.tail.rotation.z = Math.sin(faseNado * 1.5) * 0.52 * potencia;
+      pez.dorsal.rotation.z = Math.sin(faseNado * 0.75) * 0.09 * potencia;
+      pez.pectorals.forEach((aleta, index) => {
+        aleta.rotation.x = Math.sin(faseNado * 1.2 + index * Math.PI) * 0.24 * potencia;
+        aleta.rotation.z = Math.sin(faseNado + index * Math.PI) * 0.07 * potencia;
+      });
+
+      let angulo = 0;
+      let avanzando = true;
+      if (pez.target && tiempo < pez.target.hasta) {
+        const dx = pez.target.x - pez.group.position.x;
+        const dy = pez.target.y - pez.group.position.y;
+        const distancia = Math.hypot(dx, dy);
+        if (distancia > 3) {
+          angulo = Math.atan2(dy, dx);
+          avanzando = false;
+          const paso = movimiento.velocidad * movimiento.reaccion * delta * intensidadMovimiento;
+          pez.group.position.x += Math.cos(angulo) * paso;
+          pez.group.position.y += Math.sin(angulo) * paso;
+        } else {
+          if (!pez.target.llegada) pez.target.llegada = tiempo + 0.65;
+          if (tiempo < pez.target.llegada) {
+            angulo = Math.atan2(dy, dx);
+            avanzando = false;
+          } else pez.target = null;
+        }
+      } else pez.target = null;
+
+      if (avanzando) {
+        const velocidad = movimiento.velocidad * pez.speedFactor * intensidadMovimiento;
+        pez.group.position.x += velocidad * delta;
+        const deriva = Math.sin(faseNado * 0.42) * movimiento.amplitud * 3.2;
+        const y = THREE.MathUtils.clamp(pez.baseY + deriva, pez.minY, pez.maxY);
+        pez.group.position.y = THREE.MathUtils.damp(
+          pez.group.position.y, 250 - y, 2.1, delta
+        );
+      } else {
+        const objetivo = Math.atan2(Math.sin(angulo), Math.cos(angulo));
+        const actual = pez.group.rotation.z;
+        const diferencia = Math.atan2(Math.sin(objetivo - actual), Math.cos(objetivo - actual));
+        pez.group.rotation.z += diferencia * Math.min(1, delta * movimiento.reaccion * 4);
+      }
+      if (avanzando) {
+        const cabeceo = Math.sin(faseNado * 0.52) * 0.025 * potencia;
+        const actual = pez.group.rotation.z;
+        pez.group.rotation.z += Math.atan2(
+          Math.sin(cabeceo - actual), Math.cos(cabeceo - actual)
+        )
+          * Math.min(1, delta * 2.2);
+      }
+
+      const screenX = pez.group.position.x + 170;
+      const medio = pez.length * 0.62;
+      if (!pez.wrapGhost && screenX >= anchoEscena - medio) {
+        pez.wrapGhost = pez.group.clone(true);
+        escena.add(pez.wrapGhost);
+      }
+      if (pez.wrapGhost) copiarArticulacion(pez, pez.wrapGhost);
+      if (screenX >= anchoEscena + medio) {
+        if (pez.wrapGhost) adoptarFantasma(pez);
+        else {
+          pez.group.position.x -= anchoEscena;
+          pez.group.rotation.z = 0;
+        }
+      }
+      const actualY = 250 - pez.group.position.y;
+      if (actualY < limiteSuperior + pez.height * 0.45) {
+        pez.group.position.y = 250 - (limiteSuperior + pez.height * 0.45);
+      } else if (actualY > limiteInferior - pez.height * 0.55) {
+        pez.group.position.y = 250 - (limiteInferior - pez.height * 0.55);
+      }
+    }
+    renderer.render(escena, camara);
+  }
+  panel.addEventListener("fish-feed", (evento) => {
+    const x = THREE.MathUtils.clamp(evento.detail.x, 0, anchoEscena) - 170;
+    const y = THREE.MathUtils.clamp(evento.detail.y, superficie + 20, limiteInferior);
+    const objetivo = new THREE.Vector3(x, 250 - y, 0);
+    const cercanos = peces
+      .map((pez) => {
+        let distancia = Math.hypot(
+          pez.group.position.x - objetivo.x,
+          pez.group.position.y - objetivo.y
+        );
+        let objetivoX = objetivo.x;
+        let vieneDeFantasma = false;
+        if (pez.wrapGhost) {
+          const distanciaFantasma = Math.hypot(
+            pez.group.position.x - anchoEscena - objetivo.x,
+            pez.group.position.y - objetivo.y
+          );
+          if (distanciaFantasma < distancia) {
+            distancia = distanciaFantasma;
+            objetivoX += anchoEscena;
+            vieneDeFantasma = true;
+          }
+        }
+        return {pez, distancia, objetivoX, vieneDeFantasma};
+      })
+      .filter(({distancia}) => distancia < 145)
+      .sort((a, b) => a.distancia - b.distancia)
+      .slice(0, 3);
+    for (const {pez, objetivoX, vieneDeFantasma} of cercanos) {
+      pez.target = {x: objetivoX, y: objetivo.y, hasta: tiempo + 3.5, wrap: vieneDeFantasma};
+    }
+  });
+  requestAnimationFrame(animar);
+})();
+</script>
+"""
+
+
 def crear_medidor_html(
     nivel_cm: float,
     umbrales: dict,
     estado_peces: str,
     estado_peces_texto: str,
+    ambiente: str,
+    clima_texto: str,
+    noche: bool,
+    viento_kmh: float,
 ) -> str:
     """Escena animada de Calamar: el nivel (0–10 m) sube por el talud hasta la muralla."""
     y_cero, y_muralla, y_fondo = 452.0, 186.0, 482.0
@@ -924,115 +1486,38 @@ def crear_medidor_html(
 
     # ── Personas: solo se dibujan si el agua no las cubre
     gente = []
-    if y_s > 192:
+    if not noche and y_s > 192:
         gente.append(
             '<g transform="translate(160 186)"><g class="jn-respira">'
             f'{_persona_svg("#26394a", "#1d2a35")}</g></g>'
         )
-    if y_s > 303:
+    if not noche and y_s > 303:
         gente.append(
             '<g transform="translate(262 299)"><g class="jn-camina">'
             f'{_persona_svg("#3f7fc0", "#59606a", camina=True)}</g></g>'
         )
 
-    botes = "".join(
+    botes = "" if noche else "".join(
         _bote_svg(x, y_s, tipo, retraso, duracion)
         for x, tipo, retraso, duracion in (
             (42, "a", -0.4, 3.7), (96, "b", -1.9, 4.3), (160, "c", -3.1, 4.9),
         )
     )
 
-    # ── Peces (mismas especies y estados de ánimo que antes)
+    # ── Perfiles de los peces 3D
     perfiles_peces = [
-        {
-            "especie": "bocachico", "ancho": 40, "alto": 20, "profundidad": 68, "sentido": "der",
-            "nado": 1.0, "fase": 0.15, "reposo": 40,
-            "colas": (0.38, 0.18, 0.08), "aletas": (0.66, 0.32, 0.14), "cuerpos": (1.7, 0.8, 0.38),
-            "partes": """
-                <path class="fish-tail" d="M9 12 2 5v14l7-7Z" fill="#dc8e43"/>
-                <path d="M7 12C14 4 32 5 42 12 32 19 14 20 7 12Z" fill="#f2c65d"/>
-                <path class="fish-fin" d="m17 7 5-5 6 5Z" fill="#e99d49"/>
-                <path class="fish-fin" d="m19 17 5 5 5-5Z" fill="#e99d49"/>
-                <path d="M19 8v8m5-9v10m5-9v8" stroke="#d69345" stroke-width="1"/>
-                <circle cx="36" cy="10" r="1.2" fill="#17384a"/>
-            """,
-        },
-        {
-            "especie": "bagre", "ancho": 44, "alto": 18, "profundidad": 51, "sentido": "izq",
-            "nado": 1.25, "fase": 0.55, "reposo": 230,
-            "colas": (0.52, 0.22, 0.09), "aletas": (0.82, 0.36, 0.16), "cuerpos": (2.1, 0.9, 0.42),
-            "partes": """
-                <path class="fish-tail" d="M9 12 2 6v12l7-6Z" fill="#4a8f91"/>
-                <path d="M8 12C15 6 34 7 41 12 34 17 15 18 8 12Z" fill="#8fc2b4"/>
-                <path class="fish-fin" d="m17 8 5-5 5 5Z" fill="#477f83"/>
-                <path class="fish-fin" d="m20 16 4 5 4-5Z" fill="#477f83"/>
-                <path d="M36 10Q42 6 47 7M36 14Q42 18 47 17" fill="none" stroke="#d8d2a7" stroke-width="1"/>
-                <circle cx="36" cy="10" r="1.1" fill="#102b3b"/>
-            """,
-        },
-        {
-            "especie": "mojarra", "ancho": 34, "alto": 22, "profundidad": 35, "sentido": "der",
-            "nado": 0.85, "fase": 0.8, "reposo": 130,
-            "colas": (0.3, 0.16, 0.07), "aletas": (0.58, 0.28, 0.13), "cuerpos": (1.5, 0.72, 0.34),
-            "partes": """
-                <path class="fish-tail" d="M11 12 3 6v12l8-6Z" fill="#e98650"/>
-                <ellipse cx="25" cy="12" rx="15" ry="9" fill="#f5bd68"/>
-                <path class="fish-fin" d="m14 7 3-5 4 5 4-6 4 6 4-4 3 7Z" fill="#dc8050"/>
-                <path class="fish-fin" d="m21 18 5 5 4-6Z" fill="#e98650"/>
-                <path d="M20 5v14m6-14v14m6-12v10" stroke="#db9456" stroke-width="1"/>
-                <circle cx="35" cy="9" r="1.2" fill="#17384a"/>
-            """,
-        },
-        {
-            "especie": "sabalo", "ancho": 45, "alto": 17, "profundidad": 20, "sentido": "izq",
-            "nado": 1.1, "fase": 0.35, "reposo": 290,
-            "colas": (0.46, 0.2, 0.085), "aletas": (0.72, 0.34, 0.15), "cuerpos": (1.9, 0.84, 0.4),
-            "partes": """
-                <path class="fish-tail" d="M9 12 2 4v16l7-8Z" fill="#6ba6ad"/>
-                <path d="M7 12C16 6 35 7 43 12 35 17 16 18 7 12Z" fill="#b9d6c9"/>
-                <path class="fish-fin" d="m20 8 4-5 5 5Z" fill="#6ba6ad"/>
-                <path class="fish-fin" d="m23 16 4 5 4-5Z" fill="#6ba6ad"/>
-                <path d="M17 12h19m-13-3v6m6-6v6" stroke="#6b9fa4" stroke-width=".9"/>
-                <circle cx="37" cy="10" r="1" fill="#17384a"/>
-            """,
-        },
+        {"especie": "bocachico", "largo": 43, "alto": 19, "profundidad": 68, "velocidad": 1.0, "fase": 0.15, "rayas": [-0.45, -0.15, 0.15, 0.42]},
+        {"especie": "bagre", "largo": 47, "alto": 18, "profundidad": 51, "velocidad": 0.88, "fase": 0.55, "rayas": []},
+        {"especie": "mojarra", "largo": 36, "alto": 22, "profundidad": 35, "velocidad": 1.12, "fase": 0.8, "rayas": [-0.28, 0.05, 0.34]},
+        {"especie": "sabalo", "largo": 46, "alto": 17, "profundidad": 20, "velocidad": 1.08, "fase": 0.35, "rayas": []},
+        {"especie": "doncella", "largo": 49, "alto": 18, "profundidad": 78, "velocidad": 0.82, "fase": 0.65, "rayas": [-0.4, -0.08, 0.26]},
+        {"especie": "pacora", "largo": 40, "alto": 23, "profundidad": 45, "velocidad": 0.96, "fase": 0.42, "rayas": [-0.3, 0.24]},
+        {"especie": "capaz", "largo": 38, "alto": 16, "profundidad": 60, "velocidad": 1.18, "fase": 0.9, "rayas": []},
     ]
-    indice = {"calm": 0, "uncomfortable": 1, "scared": 2}[estado_peces]
-    clase_estado = ("calma", "incomodo", "asustado")[indice]
-    nado_base = (30.0, 21.0, 11.0)[indice]
-    peces = []
-    for pez in perfiles_peces:
-        ancho, alto = pez["ancho"], pez["alto"]
-        y_centro = y_fondo - pez["profundidad"] / 100 * (y_fondo - y_s)
-        y_centro = min(max(y_centro, y_s + 14 + alto / 2), y_fondo - alto / 2)
-        izquierda = pez["sentido"] == "izq"
-        escala = ancho / 48
-        if izquierda:
-            transformacion = f"translate({ancho} 0) scale({-escala:.3f} {escala:.3f})"
-            x_cabeza = ancho * 0.12
-        else:
-            transformacion = f"scale({escala:.3f})"
-            x_cabeza = ancho * 0.88
-        duracion = nado_base * pez["nado"]
-        alerta = ""
-        if estado_peces == "scared":
-            alerta = (
-                f'<g transform="translate({x_cabeza:.1f} -4)"><g class="jn-alerta">'
-                '<circle r="5.5" fill="#fff3e0"/>'
-                '<text y="3.2" text-anchor="middle" font-size="9" font-weight="700" fill="#b5432f" '
-                'font-family="Arial, sans-serif">!</text></g></g>'
-            )
-        estilo = (
-            f"--nado:{duracion:.1f}s;--retraso:-{duracion * pez['fase']:.1f}s;"
-            f"--cuerpo:{pez['cuerpos'][indice]}s;--cola:{pez['colas'][indice]}s;"
-            f"--aleta:{pez['aletas'][indice]}s;--reposo:{pez['reposo']}px;"
-        )
-        peces.append(
-            f'<g transform="translate(0 {y_centro - alto / 2:.1f})" '
-            f'class="jn-pez jn-pez--{clase_estado} jn-pez--{pez["sentido"]} jn-pez--{pez["especie"]}" '
-            f'style="{estilo}"><g class="jn-pez-nada"><g class="jn-pez-cuerpo">'
-            f'<g transform="{transformacion}">{pez["partes"]}</g></g>{alerta}</g></g>'
-        )
+    datos_peces = json.dumps(
+        [{**pez, "x": 58 + indice * 34} for indice, pez in enumerate(perfiles_peces)],
+        ensure_ascii=False,
+    )
 
     # ── Burbujas
     base_burbuja = y_fondo - 4
@@ -1048,25 +1533,62 @@ def crear_medidor_html(
                 f'stroke="#dcf6fa" stroke-width="1" style="--sube:{sube:.0f}px;--dur:{duracion}s;--delay:-{retraso}s"/>'
             )
 
+    gotas_lluvia = []
+    relampago = ""
+    if ambiente in ("lluvia", "tormenta"):
+        rng_lluvia = random.Random(1996)
+        for _ in range(32):
+            x = rng_lluvia.uniform(4, 336)
+            y = rng_lluvia.uniform(0, max(1, y_s - 12))
+            gotas_lluvia.append(
+                f'<path class="jn-gota-lluvia" style="--delay:{rng_lluvia.uniform(-1.8, 0):.2f}s" '
+                f'd="{x:.1f} {y:.1f}l-3.5 9" fill="none" stroke="#e4f2f4" '
+                'stroke-width="1" stroke-linecap="round"/>'
+            )
+        if ambiente == "tormenta":
+            relampago = (
+                '<path class="jn-relampago" d="m292 45-12 22h9l-5 17 20-26h-10l7-13Z" '
+                'fill="#fff5c4" opacity=".8"/>'
+            )
+    lluvia_svg = f'<g aria-hidden="true">{"".join(gotas_lluvia)}{relampago}</g>'
+
     # ── Agua: cuerpo translúcido, destellos y dos olas
+    colores_agua = {
+        "despejado": ("#2aa3b4", "#127a91", "#0c4057"),
+        "nublado": ("#3793a0", "#176d80", "#103e51"),
+        "lluvia": ("#448c98", "#1a6274", "#123b4c"),
+        "tormenta": ("#397987", "#164f63", "#0c2e43"),
+    }
+    if noche:
+        colores_agua = {
+            "despejado": ("#1e7688", "#104d68", "#092b42"),
+            "nublado": ("#286b79", "#124459", "#092b40"),
+            "lluvia": ("#285d6e", "#103b53", "#08253a"),
+            "tormenta": ("#204d61", "#0d344a", "#071f34"),
+        }
+    agua_superficie, agua_media, agua_fondo = colores_agua[ambiente]
     destellos = "".join(f"M{k * 85 + 10} 9h14M{k * 85 + 48} 17h9M{k * 85 + 28} 27h11" for k in range(8))
     agua = (
         '<defs><linearGradient id="jn-agua" gradientUnits="userSpaceOnUse" '
         f'x1="0" y1="{y_s:.1f}" x2="0" y2="500">'
-        '<stop offset="0" stop-color="#2aa3b4" stop-opacity=".62"/>'
-        '<stop offset=".45" stop-color="#127a91" stop-opacity=".8"/>'
-        '<stop offset="1" stop-color="#0c4057" stop-opacity=".93"/></linearGradient></defs>'
+        f'<stop offset="0" stop-color="{agua_superficie}" stop-opacity=".7"/>'
+        f'<stop offset=".45" stop-color="{agua_media}" stop-opacity=".84"/>'
+        f'<stop offset="1" stop-color="{agua_fondo}" stop-opacity=".95"/></linearGradient></defs>'
         f'<rect x="0" y="{y_s:.1f}" width="340" height="{500 - y_s:.1f}" fill="url(#jn-agua)"/>'
         f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:16s">'
         f'<path d="{destellos}" stroke="#ffffff" stroke-opacity=".3" stroke-width="1" '
         'stroke-linecap="round" fill="none"/></g></g>'
     )
+    factor_viento = max(0.55, 1 - min(max(viento_kmh, 0), 55) / 75)
+    duracion_ola_atras = 13 * factor_viento
+    duracion_ola_frente = 8 * factor_viento
     ola_atras = (
-        f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:13s;--delay:-4s">'
+        f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" '
+        f'style="--dur:{duracion_ola_atras:.1f}s;--delay:-4s">'
         f'<path d="{_ola_path(2.4, 68, 10, 12)}" fill="#63cbd6" opacity=".38"/></g></g>'
     )
     ola_frente = (
-        f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:8s">'
+        f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:{duracion_ola_frente:.1f}s">'
         f'<path d="{_ola_path(3.2, 85, 8, 14)}" fill="#3bb7c8" fill-opacity=".5" '
         'stroke="#ffffff" stroke-opacity=".75" stroke-width="1.1"/></g></g>'
     )
@@ -1138,21 +1660,33 @@ def crear_medidor_html(
         )
 
     html = f"""
-    <div class="gauge-panel" role="img" aria-label="Escena animada de Calamar. Nivel del río: {nivel_cm:.1f} centímetros; la muralla está a 10 metros. Peces {estado_peces_texto}.">
-      <svg class="gauge-scene" viewBox="0 0 340 500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        {_escena_fija_svg()}
+    <style>{_MEDIDOR_CSS}</style>
+    <div class="gauge-feed-wrap">
+      <div class="gauge-panel">
+      <svg class="gauge-scene" viewBox="0 0 340 500" xmlns="http://www.w3.org/2000/svg"
+           data-superficie="{y_s:.1f}" data-estado-peces="{estado_peces}" role="group"
+           aria-label="Hábitat del río en {clima_texto}, {'de noche' if noche else 'de día'}. Nivel {nivel_cm:.1f} centímetros; peces {estado_peces_texto}.">
+        <title>Hábitat del río Magdalena en Calamar</title>
+        {_escena_fija_svg(ambiente, noche)}
+        {lluvia_svg}
         {''.join(gente)}
+        {agua}
         {ola_atras}
         {botes}
-        {agua}
-        {''.join(peces)}
+        {_tarullas_svg(y_s)}
         {''.join(burbujas)}
         {ola_frente}
+      </svg>
+      <canvas class="fish-canvas" aria-hidden="true"></canvas>
+      <svg class="gauge-overlay" viewBox="0 0 340 500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         {''.join(lineas)}
         {regla}
         {''.join(etiquetas_svg)}
       </svg>
+      </div>
     </div>
+    <script id="fish-data" type="application/json">{datos_peces}</script>
+    {_MEDIDOR_SCRIPT}
     """
     return _compactar_html(html)
 
@@ -1219,15 +1753,45 @@ estado_peces, estado_peces_texto = clasificar_estado_peces(nivel_cm, delta_cm)
 edad_dias = (pd.Timestamp.now().normalize() - fecha_ult.normalize()).days
 umbrales = calcular_umbrales(df)
 
+tiempo_actual: dict | None = None
+error_meteorologia: Exception | None = None
+try:
+    with st.spinner("Actualizando el ambiente del río..."):
+        tiempo_actual = cargar_meteorologia()
+except (requests.RequestException, ValueError) as exc:
+    error_meteorologia = exc
+
+codigo_clima = int(tiempo_actual["weather_code"]) if tiempo_actual is not None else None
+hora_local = (
+    pd.Timestamp(tiempo_actual["time"])
+    if tiempo_actual is not None
+    else pd.Timestamp.now(tz=METEO_ZONA_HORARIA).tz_localize(None)
+)
+noche = hora_local.hour < 6 or hora_local.hour >= 18
+ambiente = tipo_ambiente(codigo_clima)
+clima_texto = (
+    describir_tiempo(codigo_clima)
+    if codigo_clima is not None
+    else "clima no disponible"
+)
+viento_kmh = float(tiempo_actual["wind_speed_10m"]) if tiempo_actual is not None else 0.0
+
 col_medidor, col_lectura = st.columns([0.9, 1.1], gap="large")
 with col_medidor:
-    st.markdown(
+    components.html(
         crear_medidor_html(
-            nivel_cm, umbrales, estado_peces, estado_peces_texto
+            nivel_cm,
+            umbrales,
+            estado_peces,
+            estado_peces_texto,
+            ambiente,
+            clima_texto,
+            noche,
+            viento_kmh,
         ),
-        unsafe_allow_html=True,
+        height=550,
+        scrolling=False,
     )
-    st.caption("Escala: 0–10 m. La muralla de Calamar está a 10 m (1000 cm).")
 
 with col_lectura:
     fecha_texto = fecha_es(ts_ult, con_hora=pd.notna(ultimo["Ultima_lectura"]))
@@ -1363,7 +1927,10 @@ st.caption(
 )
 try:
     with st.spinner("Consultando condiciones meteorológicas y pronóstico..."):
-        tiempo_actual = cargar_meteorologia()
+        if error_meteorologia is not None:
+            raise error_meteorologia
+        if tiempo_actual is None:
+            raise ValueError("No hay datos meteorológicos actuales disponibles.")
         subzonas_cuenca = cargar_subzonas_cuenca()
         pronostico_horario = cargar_pronostico_cuenca(tiempo_actual["time"])
 except (requests.RequestException, ValueError) as exc:
@@ -1376,6 +1943,7 @@ except (requests.RequestException, ValueError) as exc:
     st.metric("Dirección observada · 3 días", tendencia)
     st.caption(motivo_tendencia)
 else:
+    assert tiempo_actual is not None
     lluvia_media_total = float(pronostico_horario["Precipitacion_mm"].sum())
     tendencia, motivo_tendencia = estimar_tendencia_nivel(df)
     clima, lluvia, nivel_futuro = st.columns(3)
@@ -1494,6 +2062,8 @@ try:
     st.plotly_chart(fig, width="stretch", config=cfg)
 except TypeError:   # versiones antiguas de Streamlit
     st.plotly_chart(fig, use_container_width=True, config=cfg)
+
+st.metric("Estado del clima en Calamar", clima_texto)
 
 with st.expander("Consultar las últimas 30 lecturas"):
     recientes = df.copy()
