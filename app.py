@@ -971,11 +971,20 @@ html, body {margin:0; padding:0; background:transparent; font-family:Arial,sans-
   20% {opacity:.8} to {transform:translateY(16px); opacity:0}}
 .jn-relampago {animation:jn-relampago 5s steps(1,end) infinite;}
 @keyframes jn-relampago {0%,94%,97%,100% {opacity:0} 95%,96% {opacity:.9}}
-.jn-alimento {fill:#f4d36d; stroke:#fff4bb; stroke-width:1;
+.btn-feed-inframe {position:absolute; left:13.8%; bottom:8px; z-index:3; padding:3px 9px;
+  border-radius:999px; border:1px solid rgba(212,244,250,.42);
+  background:rgba(15,44,59,.8); color:#eef8fb; font-family:Arial,sans-serif;
+  font-size:11px; font-weight:700; line-height:1.25; cursor:pointer;
+  backdrop-filter:blur(4px); box-shadow:0 2px 6px rgba(10,26,36,.35);
+  transition:background .15s ease, transform .12s ease, border-color .15s ease;}
+.btn-feed-inframe:hover {background:rgba(22,127,148,.92);
+  border-color:rgba(255,255,255,.72);}
+.btn-feed-inframe:active {transform:scale(.96);}
+.jn-alimento {fill:#f4d36d; stroke:#fff4bb; stroke-width:.55;
   animation:jn-comida 1.8s ease-out forwards; pointer-events:none;}
 @keyframes jn-comida {0% {transform:translateY(-18px); opacity:0}
   20% {opacity:1} 100% {transform:translateY(0); opacity:.95}}
-.jn-ondas-comida {fill:none; stroke:#d4ffff; stroke-width:1.5;
+.jn-ondas-comida {fill:none; stroke:#d4ffff; stroke-width:1.4;
   transform-box:fill-box; transform-origin:center; animation:jn-ondas 1.1s ease-out forwards;}
 @keyframes jn-ondas {from {transform:scale(.2); opacity:.9} to {transform:scale(2.4); opacity:0}}
 @media (prefers-reduced-motion:reduce) {
@@ -994,37 +1003,45 @@ _MEDIDOR_SCRIPT = """
   const panel = document.querySelector(".gauge-panel");
   if (!svg || !panel) return;
   const superficie = Number(svg.dataset.superficie);
-  const convertir = (x, y) => {
-    const punto = svg.createSVGPoint();
-    punto.x = x;
-    punto.y = y;
-    return punto;
-  };
-  const puntoLocal = (x, y) =>
-    convertir(x, y).matrixTransform(svg.getScreenCTM().inverse());
+  const btnFeed = panel.querySelector(".btn-feed-inframe");
   function alimentar(x, y) {
     x = Math.max(50, Math.min(325, x));
-    y = Math.max(superficie + 8, Math.min(466, y));
-    const comida = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    comida.setAttribute("class", "jn-alimento");
-    comida.setAttribute("cx", x);
-    comida.setAttribute("cy", y);
-    comida.setAttribute("r", "4");
-    svg.appendChild(comida);
-    const onda = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    y = Math.max(superficie + 8, Math.min(464, y));
+    const ns = "http://www.w3.org/2000/svg";
+    const grupo = document.createElementNS(ns, "g");
+    const total = 8;
+    for (let i = 0; i < total; i++) {
+      const ang = (i / total) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
+      const dist = i === 0 ? Math.random() * 2.5 : 3 + Math.random() * 8.5;
+      const px = Math.max(48, Math.min(330, x + Math.cos(ang) * dist));
+      const py = Math.max(superficie + 4, Math.min(468, y + Math.sin(ang) * dist * 0.75));
+      const punto = document.createElementNS(ns, "circle");
+      punto.setAttribute("class", "jn-alimento");
+      punto.setAttribute("cx", px.toFixed(1));
+      punto.setAttribute("cy", py.toFixed(1));
+      punto.setAttribute("r", (1.2 + Math.random() * 0.8).toFixed(2));
+      punto.style.animationDelay = (i * 0.025).toFixed(3) + "s";
+      grupo.appendChild(punto);
+    }
+    svg.appendChild(grupo);
+    const onda = document.createElementNS(ns, "circle");
     onda.setAttribute("class", "jn-ondas-comida");
     onda.setAttribute("cx", x);
     onda.setAttribute("cy", y);
-    onda.setAttribute("r", "7");
+    onda.setAttribute("r", "6");
     svg.appendChild(onda);
     panel.dispatchEvent(new CustomEvent("fish-feed", {detail: {x, y}}));
-    window.setTimeout(() => { comida.remove(); onda.remove(); }, 2100);
+    window.setTimeout(() => { grupo.remove(); onda.remove(); }, 2200);
   }
-  panel.addEventListener("pointerdown", (evento) => {
-    evento.preventDefault();
-    const punto = puntoLocal(evento.clientX, evento.clientY);
-    alimentar(punto.x, punto.y);
-  });
+  if (btnFeed) {
+    btnFeed.addEventListener("click", () => {
+      const minY = Math.min(440, superficie + 24);
+      const maxY = Math.max(minY + 10, 455);
+      const rx = 75 + Math.random() * 205;
+      const ry = minY + Math.random() * (maxY - minY);
+      alimentar(rx, ry);
+    });
+  }
 })();
 </script>
 <script type="module">
@@ -2072,6 +2089,7 @@ def crear_medidor_html(
         {regla}
         {''.join(etiquetas_svg)}
       </svg>
+      <button type="button" class="btn-feed-inframe" aria-label="Alimentar peces">Alimentar peces</button>
       </div>
     </div>
     <script id="fish-data" type="application/json">{datos_peces}</script>
