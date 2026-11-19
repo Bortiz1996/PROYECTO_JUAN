@@ -567,9 +567,7 @@ def crear_grafica_fews(datos_fews: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def crear_grafica_historica(
-    datos_grafica: pd.DataFrame, umbrales: dict
-) -> go.Figure:
+def crear_grafica_historica(datos_grafica: pd.DataFrame, umbrales: dict) -> go.Figure:
     fig = go.Figure(go.Scatter(
         x=datos_grafica["Fecha"], y=datos_grafica["Nivel_cm"],
         name="Nivel observado (cm)",
@@ -927,7 +925,7 @@ def _tarullas_svg(y_superficie: float) -> str:
     return "".join(plantas)
 
 
-# ── CSS y JS del medidor (extraídos para claridad) ──
+# ── CSS y JS del medidor ──
 _MEDIDOR_CSS = """
 html, body {margin:0; padding:0; background:transparent; font-family:Arial,sans-serif;}
 .gauge-feed-wrap {width:min(100%, 340px); margin:0 auto; color:#365462;}
@@ -1469,7 +1467,6 @@ def crear_medidor_html(
     y_s = posicion(max(0.0, min(nivel_cm, NIVEL_MURALLA_CM * 1.12)))
     sobre_muralla = nivel_cm > NIVEL_MURALLA_CM
 
-    # ── Personas
     gente = []
     if not noche and y_s > 192:
         gente.append(
@@ -1489,7 +1486,6 @@ def crear_medidor_html(
         )
     )
 
-    # ── Peces
     perfiles_peces = [
         {"especie": "bocachico", "largo": 43, "alto": 19, "profundidad": 68, "velocidad": 1.0, "fase": 0.15, "rayas": [-0.45, -0.15, 0.15, 0.42]},
         {"especie": "bagre", "largo": 47, "alto": 18, "profundidad": 51, "velocidad": 0.88, "fase": 0.55, "rayas": []},
@@ -1504,7 +1500,6 @@ def crear_medidor_html(
         ensure_ascii=False,
     )
 
-    # ── Burbujas
     base_burbuja = y_fondo - 4
     sube = base_burbuja - y_s
     burbujas = []
@@ -1518,7 +1513,6 @@ def crear_medidor_html(
                 f'stroke="#dcf6fa" stroke-width="1" style="--sube:{sube:.0f}px;--dur:{duracion}s;--delay:-{retraso}s"/>'
             )
 
-    # ── Lluvia
     gotas_lluvia = []
     relampago = ""
     if ambiente in ("lluvia", "tormenta"):
@@ -1538,7 +1532,6 @@ def crear_medidor_html(
             )
     lluvia_svg = f'<g aria-hidden="true">{"".join(gotas_lluvia)}{relampago}</g>'
 
-    # ── Agua
     colores_agua = {
         "despejado": ("#2aa3b4", "#127a91", "#0c4057"),
         "nublado": ("#3793a0", "#176d80", "#103e51"),
@@ -1579,7 +1572,6 @@ def crear_medidor_html(
         'stroke="#ffffff" stroke-opacity=".75" stroke-width="1.1"/></g></g>'
     )
 
-    # ── Regla de nivel
     marcas = []
     for metro in range(0, 11):
         y = posicion(metro * 100)
@@ -1599,7 +1591,6 @@ def crear_medidor_html(
         f'<polygon points="39,{y_s:.1f} 47,{y_s - 4.5:.1f} 47,{y_s + 4.5:.1f}" fill="#ffffff" stroke="#167f94"/>'
     )
 
-    # ── Etiquetas
     lineas = [
         f'<path d="M40 {posicion(NIVEL_REFERENCIA_CM):.1f}H340" stroke="#0f2c3b" stroke-opacity=".6" '
         'stroke-dasharray="5 4" stroke-width="1.2"/>'
@@ -1774,6 +1765,14 @@ def cargar_datos_combinados() -> tuple[pd.DataFrame, pd.DataFrame | None, Except
     return df, datos_fews, error_fews
 
 
+def clasificar_estado_peces(nivel_cm: float, cambio_cm: float) -> tuple[str, str]:
+    if nivel_cm > 900:
+        return "scared", "asustados"
+    if cambio_cm < 0:
+        return "uncomfortable", "incómodos"
+    return "calm", "tranquilos"
+
+
 def calcular_metadatos_ultima_lectura(df: pd.DataFrame) -> dict:
     ultimo = df.iloc[-1]
     nivel_cm = float(ultimo["Nivel_cm"])
@@ -1805,14 +1804,6 @@ def calcular_metadatos_ultima_lectura(df: pd.DataFrame) -> dict:
     }
 
 
-def clasificar_estado_peces(nivel_cm: float, cambio_cm: float) -> tuple[str, str]:
-    if nivel_cm > 900:
-        return "scared", "asustados"
-    if cambio_cm < 0:
-        return "uncomfortable", "incómodos"
-    return "calm", "tranquilos"
-
-
 # ═══════════════════════════ SECCIONES DE LA UI ═══════════════════════════
 def seccion_medidor_y_lectura(
     nivel_cm: float,
@@ -1824,6 +1815,8 @@ def seccion_medidor_y_lectura(
     noche: bool,
     viento_kmh: float,
     meta_lectura: dict,
+    tiempo_actual: dict | None,
+    error_meteorologia: Exception | None,
 ) -> None:
     col_medidor, col_lectura = st.columns([0.9, 1.1], gap="large")
     with col_medidor:
@@ -1836,11 +1829,7 @@ def seccion_medidor_y_lectura(
             scrolling=False,
         )
         # Clima debajo del medidor (con icono)
-        mostrar_clima_actual(
-            st.session_state.get("tiempo_actual"),
-            st.session_state.get("error_meteorologia"),
-            noche,
-        )
+        mostrar_clima_actual(tiempo_actual, error_meteorologia, noche)
 
     with col_lectura:
         fecha_texto = fecha_es(
@@ -1859,8 +1848,12 @@ def seccion_medidor_y_lectura(
 def seccion_visor_fews(
     datos_fews: pd.DataFrame | None,
     error_fews: Exception | None,
-    clima_texto: str,
 ) -> None:
+    """Sección del visor FEWS: mapa de ubicación y serie consolidada.
+
+    Se eliminaron el «Estado del clima en Calamar» y el «Último nivel observado FEWS»
+    que aparecían junto al mapa (ahora viven en sus propias secciones).
+    """
     st.subheader("Visor FEWS IDEAM · Calamar")
     st.caption(
         "Ubicación de la estación y serie consolidada de nivel observado publicada por FEWS IDEAM. "
@@ -1883,36 +1876,22 @@ def seccion_visor_fews(
     if error_fews is not None:
         st.caption("No se pudo consultar FEWS; mostrando el último dato guardado.")
 
-    mapa_col, nivel_col = st.columns([1.2, 0.8], gap="large")
-    with mapa_col:
-        st.caption(
-            f"Estación {ESTACION_NOMBRE} · Código IDEAM {ESTACION_CODIGO} · "
-            f"{ESTACION_LATITUD:.6f}, {ESTACION_LONGITUD:.6f} · "
-            f"{ESTACION_ALTITUD_MSNM} m s. n. m."
-        )
-        st.map(
-            mapa_estacion, latitude="lat", longitude="lon",
-            color="#167f94", size=120, zoom=14, height=420,
-        )
-        st.metric("Estado del clima en Calamar", clima_texto)
-
-    with nivel_col:
-        if datos_fews is not None:
-            lectura_fews = datos_fews.iloc[-1]
-            st.metric("Último nivel observado FEWS", f"{lectura_fews['Nivel_cm']:.1f} cm")
-            st.caption(f"Fecha de lectura: {fecha_es(lectura_fews['Fecha'], con_hora=True)}")
-            st.caption(
-                "Consulta FEWS: "
-                f"{fecha_es(datos_fews['Consultado_en'].iloc[0], con_hora=True)}"
-            )
-            st.caption("Serie consolidada · unidad original: metros, convertida a centímetros.")
-        st.markdown(
-            "[Abrir ubicación en OpenStreetMap]"
-            f"(https://www.openstreetmap.org/?mlat={ESTACION_LATITUD}&mlon={ESTACION_LONGITUD}"
-            f"#map=15/{ESTACION_LATITUD}/{ESTACION_LONGITUD}) · "
-            "[Catálogo Nacional de Estaciones del IDEAM]"
-            "(https://dhime.ideam.gov.co/server/rest/services/CNE/Estaciones/MapServer/0)"
-        )
+    st.caption(
+        f"Estación {ESTACION_NOMBRE} · Código IDEAM {ESTACION_CODIGO} · "
+        f"{ESTACION_LATITUD:.6f}, {ESTACION_LONGITUD:.6f} · "
+        f"{ESTACION_ALTITUD_MSNM} m s. n. m."
+    )
+    st.map(
+        mapa_estacion, latitude="lat", longitude="lon",
+        color="#167f94", size=120, zoom=14, height=420,
+    )
+    st.markdown(
+        "[Abrir ubicación en OpenStreetMap]"
+        f"(https://www.openstreetmap.org/?mlat={ESTACION_LATITUD}&mlon={ESTACION_LONGITUD}"
+        f"#map=15/{ESTACION_LATITUD}/{ESTACION_LONGITUD}) · "
+        "[Catálogo Nacional de Estaciones del IDEAM]"
+        "(https://dhime.ideam.gov.co/server/rest/services/CNE/Estaciones/MapServer/0)"
+    )
 
     if datos_fews is not None:
         st.caption(
@@ -2056,11 +2035,7 @@ def seccion_historico(df: pd.DataFrame, umbrales: dict, fecha_ult: pd.Timestamp)
         st.caption(f"Hora de última lectura: {fecha_es(fecha_ult, con_hora=True)}")
 
     with st.expander("Ver umbrales usados"):
-        estilos = {
-            "amarilla": "Amarilla",
-            "naranja": "Naranja",
-            "roja": "Roja",
-        }
+        estilos = {"amarilla": "Amarilla", "naranja": "Naranja", "roja": "Roja"}
         for k, nombre in estilos.items():
             v, o = umbrales["valores"][k], umbrales["origen"][k]
             st.write(f"**{nombre}:** {'—' if v is None else f'{v:.0f} cm'} ({o})")
@@ -2155,10 +2130,6 @@ def main() -> None:
     )
     viento_kmh = float(tiempo_actual["wind_speed_10m"]) if tiempo_actual is not None else 0.0
 
-    # Guardar en session_state para que la función de la columna del medidor acceda
-    st.session_state["tiempo_actual"] = tiempo_actual
-    st.session_state["error_meteorologia"] = error_meteorologia
-
     seccion_medidor_y_lectura(
         nivel_cm,
         umbrales,
@@ -2169,6 +2140,8 @@ def main() -> None:
         noche,
         viento_kmh,
         meta_lectura,
+        tiempo_actual,
+        error_meteorologia,
     )
 
     if meta_lectura["edad_dias"] > DIAS_MAX_SIN_DATOS:
@@ -2177,7 +2150,7 @@ def main() -> None:
             "puede no representar el nivel actual del río."
         )
 
-    seccion_visor_fews(datos_fews, error_fews, clima_texto)
+    seccion_visor_fews(datos_fews, error_fews)
     seccion_lluvia_y_tendencia(df, tiempo_actual, error_meteorologia)
     seccion_historico(df, umbrales, fecha_ult)
     seccion_compartir_descargar(df, nivel_cm)
