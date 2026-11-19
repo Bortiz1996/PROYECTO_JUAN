@@ -980,13 +980,6 @@ html, body {margin:0; padding:0; background:transparent; font-family:Arial,sans-
 .btn-feed-inframe:hover {background:rgba(22,127,148,.92);
   border-color:rgba(255,255,255,.72);}
 .btn-feed-inframe:active {transform:scale(.96);}
-.jn-alimento {fill:#f4d36d; stroke:#fff4bb; stroke-width:.55;
-  animation:jn-comida 1.8s ease-out forwards; pointer-events:none;}
-@keyframes jn-comida {0% {transform:translateY(-18px); opacity:0}
-  20% {opacity:1} 100% {transform:translateY(0); opacity:.95}}
-.jn-ondas-comida {fill:none; stroke:#d4ffff; stroke-width:1.4;
-  transform-box:fill-box; transform-origin:center; animation:jn-ondas 1.1s ease-out forwards;}
-@keyframes jn-ondas {from {transform:scale(.2); opacity:.9} to {transform:scale(2.4); opacity:0}}
 @media (prefers-reduced-motion:reduce) {
   .jn-ola,.jn-ave path,.jn-bote,.jn-camina,.jn-pierna,.jn-respira,
   .jn-burbuja,.jn-tarulla,.jn-gota-lluvia,.jn-relampago {
@@ -997,53 +990,6 @@ html, body {margin:0; padding:0; background:transparent; font-family:Arial,sans-
 """
 
 _MEDIDOR_SCRIPT = """
-<script>
-(() => {
-  const svg = document.querySelector(".gauge-scene");
-  const panel = document.querySelector(".gauge-panel");
-  if (!svg || !panel) return;
-  const superficie = Number(svg.dataset.superficie);
-  const btnFeed = panel.querySelector(".btn-feed-inframe");
-  function alimentar(x, y) {
-    x = Math.max(50, Math.min(325, x));
-    y = Math.max(superficie + 8, Math.min(464, y));
-    const ns = "http://www.w3.org/2000/svg";
-    const grupo = document.createElementNS(ns, "g");
-    const total = 8;
-    for (let i = 0; i < total; i++) {
-      const ang = (i / total) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
-      const dist = i === 0 ? Math.random() * 2.5 : 3 + Math.random() * 8.5;
-      const px = Math.max(48, Math.min(330, x + Math.cos(ang) * dist));
-      const py = Math.max(superficie + 4, Math.min(468, y + Math.sin(ang) * dist * 0.75));
-      const punto = document.createElementNS(ns, "circle");
-      punto.setAttribute("class", "jn-alimento");
-      punto.setAttribute("cx", px.toFixed(1));
-      punto.setAttribute("cy", py.toFixed(1));
-      punto.setAttribute("r", (1.2 + Math.random() * 0.8).toFixed(2));
-      punto.style.animationDelay = (i * 0.025).toFixed(3) + "s";
-      grupo.appendChild(punto);
-    }
-    svg.appendChild(grupo);
-    const onda = document.createElementNS(ns, "circle");
-    onda.setAttribute("class", "jn-ondas-comida");
-    onda.setAttribute("cx", x);
-    onda.setAttribute("cy", y);
-    onda.setAttribute("r", "6");
-    svg.appendChild(onda);
-    panel.dispatchEvent(new CustomEvent("fish-feed", {detail: {x, y}}));
-    window.setTimeout(() => { grupo.remove(); onda.remove(); }, 2200);
-  }
-  if (btnFeed) {
-    btnFeed.addEventListener("click", () => {
-      const minY = Math.min(440, superficie + 24);
-      const maxY = Math.max(minY + 10, 455);
-      const rx = 75 + Math.random() * 205;
-      const ry = minY + Math.random() * (maxY - minY);
-      alimentar(rx, ry);
-    });
-  }
-})();
-</script>
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 
@@ -1465,6 +1411,15 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
   particlesMesh.renderOrder = 2;
   escena.add(particlesMesh);
 
+  const pelletGeom = new THREE.SphereGeometry(1, 10, 8);
+  const pelletMat = new THREE.MeshStandardMaterial({
+    color: 0xf4d36d,
+    emissive: 0x735412,
+    roughness: 0.42,
+    metalness: 0.04,
+  });
+  const activePellets = [];
+
   function material(color, roughness = 0.43, metalness = 0.02) {
     return new THREE.MeshStandardMaterial({
       color, roughness, metalness, side: THREE.DoubleSide,
@@ -1655,7 +1610,8 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
       vertices: cuerpoGeometria.attributes.position, tail: cola,
       dorsal: aletaDorsal, pectorals: pectorales, baseY: y,
       height: alto, length: largo, minY, maxY: Math.max(minY, maxY),
-      phase: perfil.fase, speedFactor: perfil.velocidad, target: null, wrapGhost: null,
+      phase: perfil.fase, speedFactor: perfil.velocidad,
+      targetPellet: null, targetWrap: false, targetUntil: 0, biteUntil: 0, wrapGhost: null,
     };
   }
 
@@ -1685,9 +1641,8 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
     pez.tail = pez.group.getObjectByName("tail");
     pez.dorsal = pez.group.getObjectByName("dorsal");
     pez.pectorals = [-1, 1].map((lado) => pez.group.getObjectByName(`pectoral-${lado}`));
-    if (pez.target && pez.target.wrap) {
-      pez.target.x -= anchoEscena;
-      pez.target.wrap = false;
+    if (pez.targetPellet && pez.targetWrap) {
+      pez.targetWrap = false;
     }
   }
 
@@ -1707,7 +1662,6 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
 
   let tiempoPrevio = performance.now();
   let tiempo = 0;
-  let rippleStartTime = -99;
   function animar(marca) {
     requestAnimationFrame(animar);
     const delta = Math.min((marca - tiempoPrevio) / 1000, 0.04);
@@ -1719,9 +1673,8 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
     const shaderTime = reducido ? 0 : tiempo;
     waterBackUniforms.uTime.value = shaderTime;
     waterForeUniforms.uTime.value = shaderTime;
-    const rippleAge = rippleStartTime >= 0 ? tiempo - rippleStartTime : 99;
-    waterBackUniforms.uRippleAge.value = rippleAge;
-    waterForeUniforms.uRippleAge.value = rippleAge;
+    waterBackUniforms.uRippleAge.value = 99;
+    waterForeUniforms.uRippleAge.value = 99;
     reflejoAgua.intensity = (noche ? 22 : 36) + Math.sin(shaderTime * 1.9) * (noche ? 3 : 6);
 
     if (!reducido) {
@@ -1742,6 +1695,65 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
       }
       particleAttr.needsUpdate = true;
     }
+
+    // Alimento cayendo desde la superficie con gravedad y resistencia del agua
+    const bottomSceneY = 250 - (limiteInferior - 2);
+    for (let i = activePellets.length - 1; i >= 0; i--) {
+      const pellet = activePellets[i];
+      if (pellet.eaten || tiempo >= pellet.fadeAt) {
+        escena.remove(pellet.mesh);
+        activePellets.splice(i, 1);
+        continue;
+      }
+      if (tiempo < pellet.releaseAt) {
+        pellet.mesh.visible = false;
+        continue;
+      }
+      pellet.mesh.visible = true;
+      if (!pellet.settled) {
+        if (pellet.y > surfaceSceneY) {
+          pellet.vy -= 280 * pellet.gravityScale * delta;
+        } else {
+          if (!pellet.inWater) {
+            pellet.inWater = true;
+            pellet.vy *= 0.42;
+          }
+          pellet.vy -= 72 * pellet.gravityScale * delta;
+          pellet.vy *= Math.exp(-1.55 * delta);
+          pellet.x += (pellet.vx + Math.sin(tiempo * 2.2 + pellet.phase) * 2.4) * delta;
+          pellet.x = THREE.MathUtils.clamp(pellet.x, -125, 160);
+        }
+        pellet.y += pellet.vy * delta;
+        if (pellet.y <= bottomSceneY) {
+          pellet.y = bottomSceneY;
+          pellet.vy = 0;
+          pellet.settled = true;
+          pellet.fadeAt = Math.min(pellet.fadeAt, tiempo + 2.5);
+        }
+      }
+      pellet.mesh.position.set(pellet.x, pellet.y, pellet.z);
+    }
+
+    const availablePellets = activePellets.filter((p) => !p.eaten && tiempo >= p.releaseAt);
+    for (const pez of peces) {
+      const dirSign = Math.cos(pez.group.rotation.y) >= 0 ? 1 : -1;
+      const mouthX = pez.group.position.x + dirSign * pez.length * 0.36;
+      const mouthY = pez.group.position.y;
+      for (const p of availablePellets) {
+        if (p.eaten) continue;
+        const dDirect = Math.hypot(p.x - mouthX, p.y - mouthY);
+        const dGhost = pez.wrapGhost
+          ? Math.hypot(p.x - (mouthX - anchoEscena), p.y - mouthY)
+          : 9999;
+        if (Math.min(dDirect, dGhost) < 10.5) {
+          p.eaten = true;
+          pez.targetPellet = null;
+          pez.biteUntil = tiempo + 0.14;
+          break;
+        }
+      }
+    }
+    const remainingPellets = availablePellets.filter((p) => !p.eaten);
 
     for (const pez of peces) {
       const faseNado = tiempo * (2.4 + pez.speedFactor * 0.45) + pez.phase * Math.PI * 2;
@@ -1765,28 +1777,71 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
         aleta.rotation.z = Math.sin(faseNado + index * Math.PI) * 0.07 * potencia;
       });
 
+      if (
+        pez.targetPellet &&
+        (pez.targetPellet.eaten || tiempo >= pez.targetPellet.fadeAt || tiempo >= pez.targetUntil)
+      ) {
+        pez.targetPellet = null;
+      }
+
+      if (!pez.targetPellet && remainingPellets.length > 0 && tiempo >= pez.biteUntil) {
+        let bestPellet = null;
+        let bestScore = Infinity;
+        let bestWrap = false;
+        for (const p of remainingPellets) {
+          let dist = Math.hypot(p.x - pez.group.position.x, p.y - pez.group.position.y);
+          let wrapUsed = false;
+          if (pez.wrapGhost) {
+            const dGhost = Math.hypot(
+              p.x - (pez.group.position.x - anchoEscena),
+              p.y - pez.group.position.y
+            );
+            if (dGhost < dist) {
+              dist = dGhost;
+              wrapUsed = true;
+            }
+          }
+          if (dist < 245) {
+            const crowd = peces.filter((other) => other.targetPellet === p).length;
+            const score = dist + crowd * 42;
+            if (score < bestScore) {
+              bestScore = score;
+              bestPellet = p;
+              bestWrap = wrapUsed;
+            }
+          }
+        }
+        if (bestPellet) {
+          pez.targetPellet = bestPellet;
+          pez.targetWrap = bestWrap;
+          pez.targetUntil = tiempo + 6.0;
+        }
+      }
+
       let targetYaw = 0;
       let targetPitch = 0;
       let avanzando = true;
-      if (pez.target && tiempo < pez.target.hasta) {
-        const dx = pez.target.x - pez.group.position.x;
-        const dy = pez.target.y - pez.group.position.y;
+      if (tiempo < pez.biteUntil) {
+        avanzando = false;
+      } else if (pez.targetPellet && !pez.targetPellet.eaten) {
+        const aimX = pez.targetPellet.x + (pez.targetWrap ? anchoEscena : 0);
+        const aimY = Math.min(pez.targetPellet.y, 250 - (superficie + 7 + pez.height * 0.35));
+        const dxCenter = aimX - pez.group.position.x;
+        const dirSign = dxCenter < -2 ? -1 : 1;
+        const mouthOffset = dirSign * pez.length * 0.28;
+        const dx = aimX - mouthOffset - pez.group.position.x;
+        const dy = aimY - pez.group.position.y;
         const distancia = Math.hypot(dx, dy);
-        targetYaw = dx < -2 ? Math.PI : 0;
-        targetPitch = Math.atan2(dy, Math.max(4, Math.abs(dx))) * 0.65;
-        if (distancia > 3) {
+        targetYaw = dxCenter < -2 ? Math.PI : 0;
+        targetPitch = Math.atan2(dy, Math.max(4, Math.abs(dxCenter))) * 0.65;
+        if (distancia > 1.5) {
           const angulo = Math.atan2(dy, dx);
           avanzando = false;
-          const paso = movimiento.velocidad * movimiento.reaccion * delta * intensidadMovimiento;
+          const paso = movimiento.velocidad * movimiento.reaccion * 1.18 * delta * intensidadMovimiento;
           pez.group.position.x += Math.cos(angulo) * paso;
           pez.group.position.y += Math.sin(angulo) * paso;
-        } else {
-          if (!pez.target.llegada) pez.target.llegada = tiempo + 0.65;
-          if (tiempo < pez.target.llegada) {
-            avanzando = false;
-          } else pez.target = null;
         }
-      } else pez.target = null;
+      }
 
       if (avanzando) {
         const velocidad = movimiento.velocidad * pez.speedFactor * intensidadMovimiento;
@@ -1800,7 +1855,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
         targetPitch = Math.sin(faseNado * 0.52) * 0.025 * potencia;
       }
 
-      const turnRate = avanzando ? 3.5 : movimiento.reaccion * 5.0;
+      const turnRate = avanzando ? 3.5 : movimiento.reaccion * 5.2;
       pez.group.rotation.y += shortestAngleDelta(targetYaw, pez.group.rotation.y) * Math.min(1, delta * turnRate);
       pez.group.rotation.z += shortestAngleDelta(targetPitch, pez.group.rotation.z) * Math.min(1, delta * (avanzando ? 2.4 : turnRate));
 
@@ -1818,53 +1873,51 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
           pez.group.rotation.set(0, 0, 0);
         }
       }
+      const minScreenTop = (pez.targetPellet ? superficie + 7 : limiteSuperior) + pez.height * 0.45;
       const actualY = 250 - pez.group.position.y;
-      if (actualY < limiteSuperior + pez.height * 0.45) {
-        pez.group.position.y = 250 - (limiteSuperior + pez.height * 0.45);
+      if (actualY < minScreenTop) {
+        pez.group.position.y = 250 - minScreenTop;
       } else if (actualY > limiteInferior - pez.height * 0.55) {
         pez.group.position.y = 250 - (limiteInferior - pez.height * 0.55);
       }
     }
     renderer.render(escena, camara);
   }
-  panel.addEventListener("fish-feed", (evento) => {
-    const x = THREE.MathUtils.clamp(evento.detail.x, 0, anchoEscena) - 170;
-    const y = THREE.MathUtils.clamp(evento.detail.y, superficie + 20, limiteInferior);
-    const objetivo = new THREE.Vector3(x, 250 - y, 0);
-
-    // Activar onda en los shaders del agua en el punto de alimento
-    waterBackUniforms.uRipplePos.value.set(x, 250 - evento.detail.y);
-    waterForeUniforms.uRipplePos.value.set(x, 250 - evento.detail.y);
-    rippleStartTime = tiempo;
-
-    const cercanos = peces
-      .map((pez) => {
-        let distancia = Math.hypot(
-          pez.group.position.x - objetivo.x,
-          pez.group.position.y - objetivo.y
-        );
-        let objetivoX = objetivo.x;
-        let vieneDeFantasma = false;
-        if (pez.wrapGhost) {
-          const distanciaFantasma = Math.hypot(
-            pez.group.position.x - anchoEscena - objetivo.x,
-            pez.group.position.y - objetivo.y
-          );
-          if (distanciaFantasma < distancia) {
-            distancia = distanciaFantasma;
-            objetivoX += anchoEscena;
-            vieneDeFantasma = true;
-          }
-        }
-        return {pez, distancia, objetivoX, vieneDeFantasma};
-      })
-      .filter(({distancia}) => distancia < 145)
-      .sort((a, b) => a.distancia - b.distancia)
-      .slice(0, 3);
-    for (const {pez, objetivoX, vieneDeFantasma} of cercanos) {
-      pez.target = {x: objetivoX, y: objetivo.y, hasta: tiempo + 3.5, wrap: vieneDeFantasma};
-    }
-  });
+  const btnFeed = panel.querySelector(".btn-feed-inframe");
+  if (btnFeed) {
+    btnFeed.addEventListener("click", () => {
+      const centerX = THREE.MathUtils.clamp(85 + Math.random() * 170, 70, 270) - 170;
+      const totalPellets = 9;
+      for (let i = 0; i < totalPellets; i++) {
+        const px = THREE.MathUtils.clamp(centerX + (Math.random() - 0.5) * 34, -120, 152);
+        const py = surfaceSceneY + 2 + Math.random() * 6;
+        const pz = (Math.random() - 0.5) * 1.4;
+        const radius = 1.35 + Math.random() * 0.75;
+        const mesh = new THREE.Mesh(pelletGeom, pelletMat);
+        mesh.scale.setScalar(radius);
+        mesh.position.set(px, py, pz);
+        mesh.renderOrder = 2;
+        mesh.visible = false;
+        escena.add(mesh);
+        activePellets.push({
+          mesh,
+          x: px,
+          y: py,
+          z: pz,
+          vx: 4.5 + Math.random() * 5.5,
+          vy: -4 - Math.random() * 6,
+          radius,
+          gravityScale: 0.85 + Math.random() * 0.35,
+          phase: Math.random() * Math.PI * 2,
+          releaseAt: tiempo + i * 0.04,
+          fadeAt: tiempo + 9.0,
+          inWater: false,
+          settled: false,
+          eaten: false,
+        });
+      }
+    });
+  }
   requestAnimationFrame(animar);
 })();
 </script>
