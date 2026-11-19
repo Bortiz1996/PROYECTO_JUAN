@@ -926,6 +926,67 @@ def _tarullas_svg(y_superficie: float) -> str:
 
 
 # ── CSS y JS del medidor ──
+_MEDIDOR_CSS = """
+html, body {margin:0; padding:0; background:transparent; font-family:Arial,sans-serif;}
+.gauge-feed-wrap {width:min(100%, 340px); margin:0 auto; color:#365462;}
+.gauge-panel {position:relative; width:100%; aspect-ratio:340/500; overflow:hidden;
+  border-radius:16px; background:#1b5a85; box-shadow:0 8px 26px rgba(20,45,60,.14);}
+.gauge-scene,.gauge-overlay {position:absolute; inset:0; display:block; width:100%; height:100%;}
+.gauge-scene {z-index:0; touch-action:manipulation;}
+.fish-canvas {position:absolute; inset:0; z-index:1; display:block; width:100%; height:100%;
+  pointer-events:none;}
+.gauge-overlay {z-index:2; pointer-events:none;}
+.jn-ola {animation:jn-ola var(--dur,9s) linear infinite; animation-delay:var(--delay,0s);}
+@keyframes jn-ola {from {transform:translateX(0)} to {transform:translateX(-340px)}}
+.jn-nube {animation:jn-nube var(--dur) linear infinite; animation-delay:var(--delay);}
+@keyframes jn-nube {from {transform:translateX(-100px)} to {transform:translateX(440px)}}
+.jn-ave {animation:jn-vuelo var(--dur) linear infinite; animation-delay:var(--delay);}
+.jn-ave path {transform-box:fill-box; transform-origin:center;
+  animation:jn-aleteo .4s ease-in-out infinite alternate;}
+@keyframes jn-vuelo {from {transform:translate(-30px,0)} to {transform:translate(370px,-18px)}}
+@keyframes jn-aleteo {from {transform:scaleY(1)} to {transform:scaleY(.3)}}
+.jn-bote {transform-box:fill-box; transform-origin:center bottom;
+  animation:jn-bote var(--dur) ease-in-out infinite; animation-delay:var(--delay);}
+@keyframes jn-bote {0%,100% {transform:translateY(0) rotate(-.9deg)}
+  50% {transform:translateY(-1.6px) rotate(1deg)}}
+.jn-camina {animation:jn-camina 18s linear infinite;}
+@keyframes jn-camina {0% {transform:translateX(0) scaleX(1)}
+  47% {transform:translateX(58px) scaleX(1)} 50% {transform:translateX(58px) scaleX(-1)}
+  97% {transform:translateX(0) scaleX(-1)} 100% {transform:translateX(0) scaleX(1)}}
+.jn-pierna {transform-box:fill-box; transform-origin:center top;
+  animation:jn-paso .55s ease-in-out infinite alternate;}
+.jn-pierna + .jn-pierna {animation-direction:alternate-reverse;}
+@keyframes jn-paso {from {transform:rotate(-24deg)} to {transform:rotate(24deg)}}
+.jn-respira {animation:jn-respira 3.2s ease-in-out infinite;}
+@keyframes jn-respira {0%,100% {transform:translateY(0)} 50% {transform:translateY(-.7px)}}
+.jn-burbuja {animation:jn-burbuja var(--dur) ease-in infinite; animation-delay:var(--delay);}
+@keyframes jn-burbuja {0% {transform:translateY(0); opacity:0} 12% {opacity:.8}
+  90% {opacity:.5} 100% {transform:translateY(calc(var(--sube) * -1)); opacity:0}}
+.jn-tarulla {transform-box:fill-box; transform-origin:center bottom;
+  animation:jn-tarulla 4.8s ease-in-out infinite; animation-delay:var(--delay);}
+@keyframes jn-tarulla {0%,100% {transform:translateY(0) rotate(-2deg)}
+  50% {transform:translateY(-2px) rotate(2deg)}}
+.jn-gota-lluvia {animation:jn-caida .8s linear infinite; animation-delay:var(--delay);}
+@keyframes jn-caida {from {transform:translateY(-12px); opacity:0}
+  20% {opacity:.8} to {transform:translateY(16px); opacity:0}}
+.jn-relampago {animation:jn-relampago 5s steps(1,end) infinite;}
+@keyframes jn-relampago {0%,94%,97%,100% {opacity:0} 95%,96% {opacity:.9}}
+.jn-alimento {fill:#f4d36d; stroke:#fff4bb; stroke-width:1;
+  animation:jn-comida 1.8s ease-out forwards; pointer-events:none;}
+@keyframes jn-comida {0% {transform:translateY(-18px); opacity:0}
+  20% {opacity:1} 100% {transform:translateY(0); opacity:.95}}
+.jn-ondas-comida {fill:none; stroke:#d4ffff; stroke-width:1.5;
+  transform-box:fill-box; transform-origin:center; animation:jn-ondas 1.1s ease-out forwards;}
+@keyframes jn-ondas {from {transform:scale(.2); opacity:.9} to {transform:scale(2.4); opacity:0}}
+@media (prefers-reduced-motion:reduce) {
+  .jn-ola,.jn-ave path,.jn-bote,.jn-camina,.jn-pierna,.jn-respira,
+  .jn-burbuja,.jn-tarulla,.jn-gota-lluvia,.jn-relampago {
+    animation:none;
+  }
+  .jn-ave {display:none;} .jn-nube {animation:none; transform:translateX(var(--reposo));}
+}
+"""
+
 _MEDIDOR_SCRIPT = """
 <script>
 (() => {
@@ -960,8 +1021,6 @@ _MEDIDOR_SCRIPT = """
     window.setTimeout(() => { comida.remove(); onda.remove(); }, 2100);
   }
   panel.addEventListener("pointerdown", (evento) => {
-    // Ignora clics sobre los controles superpuestos (regla/etiquetas) del overlay
-    if (evento.target.closest(".gauge-overlay")) return;
     evento.preventDefault();
     const punto = puntoLocal(evento.clientX, evento.clientY);
     alimentar(punto.x, punto.y);
@@ -981,39 +1040,30 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
   const perfiles = JSON.parse(datos.textContent);
   const superficie = Number(svg.dataset.superficie);
   const estado = svg.dataset.estadoPeces;
-  const reducido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  // ── Parámetros por estado (más veloces que antes; el panel es de 340 px)
   const movimiento = {
-    calm:          {velocidad: 30, amplitud: 0.55, reaccion: 1.00, cola: 0.52},
-    uncomfortable: {velocidad: 42, amplitud: 1.00, reaccion: 1.30, cola: 0.62},
-    scared:        {velocidad: 55, amplitud: 1.45, reaccion: 1.60, cola: 0.75},
-  }[estado] || {velocidad: 30, amplitud: 0.55, reaccion: 1.00, cola: 0.52};
-  if (reducido) {
-    movimiento.velocidad *= 0.25;
-    movimiento.amplitud  *= 0.20;
-  }
-
+    calm: {velocidad: 15, amplitud: 0.55, reaccion: 1.0},
+    uncomfortable: {velocidad: 23, amplitud: 1.0, reaccion: 1.35},
+    scared: {velocidad: 31, amplitud: 1.45, reaccion: 1.75},
+  }[estado];
+  const reducido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const paletas = {
     bocachico: {cuerpo: 0xe7b34f, lomo: 0xb86c35, vientre: 0xf6e3b2, aleta: 0xc77a32, raya: 0xa65e30},
-    bagre:     {cuerpo: 0x79aba2, lomo: 0x376b70, vientre: 0xc9ded2, aleta: 0x4b7f82, raya: 0x426f70},
-    mojarra:   {cuerpo: 0xe89b5d, lomo: 0x9b5438, vientre: 0xffe3b1, aleta: 0xdf7148, raya: 0xa75e43},
-    sabalo:    {cuerpo: 0xa7c7c7, lomo: 0x567b88, vientre: 0xedf0dd, aleta: 0x719b9d, raya: 0x638d95},
-    doncella:  {cuerpo: 0xb3a184, lomo: 0x665543, vientre: 0xead8b9, aleta: 0x806950, raya: 0x665543},
-    pacora:    {cuerpo: 0xafc7b6, lomo: 0x637c74, vientre: 0xe7e6cc, aleta: 0xcf8b4e, raya: 0x718c7e},
-    capaz:     {cuerpo: 0x9bb9b4, lomo: 0x526b70, vientre: 0xe8eee1, aleta: 0x758d89, raya: 0x5c7776},
+    bagre: {cuerpo: 0x79aba2, lomo: 0x376b70, vientre: 0xc9ded2, aleta: 0x4b7f82, raya: 0x426f70},
+    mojarra: {cuerpo: 0xe89b5d, lomo: 0x9b5438, vientre: 0xffe3b1, aleta: 0xdf7148, raya: 0xa75e43},
+    sabalo: {cuerpo: 0xa7c7c7, lomo: 0x567b88, vientre: 0xedf0dd, aleta: 0x719b9d, raya: 0x638d95},
+    doncella: {cuerpo: 0xb3a184, lomo: 0x665543, vientre: 0xead8b9, aleta: 0x806950, raya: 0x665543},
+    pacora: {cuerpo: 0xafc7b6, lomo: 0x637c74, vientre: 0xe7e6cc, aleta: 0xcf8b4e, raya: 0x718c7e},
+    capaz: {cuerpo: 0x9bb9b4, lomo: 0x526b70, vientre: 0xe8eee1, aleta: 0x758d89, raya: 0x5c7776},
   };
-
-  // ── Escena / cámara. Cámara ortográfica de 340×500 unidades lógicas.
   const escena = new THREE.Scene();
-  const camara = new THREE.OrthographicCamera(-170, 170, 250, -250, 0.1, 200);
-  camara.position.set(0, 0, 100);
+  const camara = new THREE.OrthographicCamera(-170, 170, 250, -250, 0.1, 100);
+  camara.position.set(0, 0, 50);
   camara.lookAt(0, 0, 0);
-  escena.add(new THREE.AmbientLight(0xd8f2f5, 1.35));
-  const solAgua = new THREE.DirectionalLight(0xffedc4, 2.1);
+  escena.add(new THREE.AmbientLight(0xd8f2f5, 1.45));
+  const solAgua = new THREE.DirectionalLight(0xffedc4, 2.2);
   solAgua.position.set(-80, 120, 110);
   escena.add(solAgua);
-  const reflejoAgua = new THREE.PointLight(0x75e7ed, 30, 420);
+  const reflejoAgua = new THREE.PointLight(0x75e7ed, 36, 420);
   reflejoAgua.position.set(95, 55, 35);
   escena.add(reflejoAgua);
 
@@ -1021,7 +1071,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
   try {
     renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
   } catch (error) {
-    console.warn("No se pudo iniciar el hábitat 3D de peces.", error);
+    console.error("No se pudo iniciar el hábitat 3D de peces.", error);
     return;
   }
   renderer.domElement.className = "fish-canvas";
@@ -1034,7 +1084,9 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
   renderer.toneMappingExposure = 1.08;
 
   function material(color, roughness = 0.43, metalness = 0.02) {
-    return new THREE.MeshStandardMaterial({color, roughness, metalness, side: THREE.DoubleSide});
+    return new THREE.MeshStandardMaterial({
+      color, roughness, metalness, side: THREE.DoubleSide,
+    });
   }
 
   function extruirAleta(puntos, color) {
@@ -1055,56 +1107,57 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
       puntos.map(([x, y, z]) => new THREE.Vector3(x, y, z))
     );
     const malla = new THREE.Mesh(
-      new THREE.TubeGeometry(curva, 10, radio, 5, false),
+      new THREE.TubeGeometry(curva, 12, radio, 5, false),
       material(color, 0.62)
     );
     grupo.add(malla);
-    return malla;
   }
 
   function crearPez(perfil, indice) {
     const paleta = paletas[perfil.especie];
-    const largo = perfil.largo, alto = perfil.alto;
+    const largo = perfil.largo;
+    const alto = perfil.alto;
     const medioLargo = largo * 0.36;
-    const medioAlto  = alto  * 0.40;
-    const medioAncho = alto  * 0.19;
+    const medioAlto = alto * 0.40;
+    const medioAncho = alto * 0.19;
     const pez = new THREE.Group();
-
-    // Cuerpo: esfera deformada con colores por vértice
-    const geo = new THREE.SphereGeometry(1, 28, 18);
-    const verts = geo.attributes.position;
-    const originales = new Float32Array(verts.array.length);
-    const colores = new Float32Array(verts.count * 3);
+    const cuerpoGeometria = new THREE.SphereGeometry(1, 28, 18);
+    const vertices = cuerpoGeometria.attributes.position;
+    const originales = new Float32Array(vertices.array.length);
+    const colores = new Float32Array(vertices.count * 3);
     const base = new THREE.Color(paleta.cuerpo);
     const lomo = new THREE.Color(paleta.lomo);
     const vientre = new THREE.Color(paleta.vientre);
-    const cTmp = new THREE.Color();
-    for (let i = 0; i < verts.count; i++) {
-      const o = i * 3;
-      const nx = verts.array[o], ny = verts.array[o + 1], nz = verts.array[o + 2];
-      const estrech = 0.68 + 0.32 * Math.sqrt(Math.max(0, 1 - nx * nx));
-      verts.array[o]     = nx * medioLargo;
-      verts.array[o + 1] = ny * medioAlto * estrech;
-      verts.array[o + 2] = nz * medioAncho * estrech;
-      originales[o]     = verts.array[o];
-      originales[o + 1] = verts.array[o + 1];
-      originales[o + 2] = verts.array[o + 2];
-      if (ny > 0.12)       cTmp.copy(base).lerp(lomo,     Math.min(0.82, (ny - 0.12) * 0.9));
-      else if (ny < -0.18) cTmp.copy(base).lerp(vientre,  Math.min(0.90, (-ny - 0.18) * 1.1));
-      else                  cTmp.copy(base);
-      cTmp.toArray(colores, o);
+    const colorVertice = new THREE.Color();
+
+    for (let i = 0; i < vertices.count; i++) {
+      const offset = i * 3;
+      const nx = vertices.array[offset];
+      const ny = vertices.array[offset + 1];
+      const nz = vertices.array[offset + 2];
+      const estrechamiento = 0.68 + 0.32 * Math.sqrt(Math.max(0, 1 - nx * nx));
+      vertices.array[offset] = nx * medioLargo;
+      vertices.array[offset + 1] = ny * medioAlto * estrechamiento;
+      vertices.array[offset + 2] = nz * medioAncho * estrechamiento;
+      originales[offset] = vertices.array[offset];
+      originales[offset + 1] = vertices.array[offset + 1];
+      originales[offset + 2] = vertices.array[offset + 2];
+
+      if (ny > 0.12) colorVertice.copy(base).lerp(lomo, Math.min(0.82, (ny - 0.12) * 0.9));
+      else if (ny < -0.18) colorVertice.copy(base).lerp(vientre, Math.min(0.9, (-ny - 0.18) * 1.1));
+      else colorVertice.copy(base);
+      colorVertice.toArray(colores, offset);
     }
-    geo.setAttribute("color", new THREE.BufferAttribute(colores, 3));
-    geo.computeVertexNormals();
+    cuerpoGeometria.setAttribute("color", new THREE.BufferAttribute(colores, 3));
+    cuerpoGeometria.computeVertexNormals();
     const cuerpo = new THREE.Mesh(
-      geo,
+      cuerpoGeometria,
       new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.36, metalness: 0.035})
     );
     cuerpo.name = "body";
     cuerpo.position.x = -medioLargo * 0.04;
     pez.add(cuerpo);
 
-    // Cabeza
     const cabeza = new THREE.Mesh(
       new THREE.SphereGeometry(1, 20, 14),
       material(paleta.cuerpo, 0.34, 0.025)
@@ -1113,18 +1166,6 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
     cabeza.position.set(medioLargo * 0.57, medioAlto * 0.02, 0);
     pez.add(cabeza);
 
-    // Branquias (discos elípticos semi-transparentes)
-    const matBranquia = new THREE.MeshStandardMaterial({
-      color: paleta.lomo, roughness: 0.6, metalness: 0, transparent: true, opacity: 0.55,
-    });
-    for (const lado of [-1, 1]) {
-      const branquia = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), matBranquia);
-      branquia.scale.set(medioLargo * 0.14, medioAlto * 0.34, medioAncho * 0.18);
-      branquia.position.set(medioLargo * 0.44, -medioAlto * 0.02, lado * medioAncho * 0.74);
-      pez.add(branquia);
-    }
-
-    // Ojos
     const ojoBlanco = material(0xfff8e8, 0.28);
     const pupila = material(0x102a38, 0.2);
     const brillo = material(0xffffff, 0.18);
@@ -1133,17 +1174,18 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
       ojo.scale.set(0.85, 0.78, 0.38);
       ojo.position.set(medioLargo * 0.76, medioAlto * 0.23, lado * medioAncho * 0.70);
       pez.add(ojo);
-      const centro = new THREE.Mesh(new THREE.SphereGeometry(0.48, 10, 8), pupila);
-      centro.scale.set(0.9, 0.95, 0.55);
-      centro.position.set(medioLargo * 0.80, medioAlto * 0.24, lado * (medioAncho * 0.77));
-      pez.add(centro);
-      const luz = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), brillo);
-      luz.position.set(medioLargo * 0.82, medioAlto * 0.29, lado * medioAncho * 0.82);
-      pez.add(luz);
+      const centroPupila = new THREE.Mesh(new THREE.SphereGeometry(0.48, 10, 8), pupila);
+      centroPupila.scale.set(0.9, 0.95, 0.55);
+      centroPupila.position.set(
+        medioLargo * 0.80, medioAlto * 0.24, lado * (medioAncho * 0.77)
+      );
+      pez.add(centroPupila);
+      const puntoLuz = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), brillo);
+      puntoLuz.position.set(medioLargo * 0.82, medioAlto * 0.29, lado * medioAncho * 0.82);
+      pez.add(puntoLuz);
     }
 
-    // Rayas / líneas laterales
-    const supCuerpo = (nx, ny) => {
+    const superficieCuerpo = (nx, ny) => {
       const t = 0.68 + 0.32 * Math.sqrt(Math.max(0, 1 - nx * nx));
       return [
         nx * medioLargo - medioLargo * 0.04,
@@ -1152,72 +1194,71 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
       ];
     };
     agregarTubo(pez, [
-      supCuerpo(0.42, 0.52), supCuerpo(0.46, 0), supCuerpo(0.42, -0.54),
+      superficieCuerpo(0.42, 0.52),
+      superficieCuerpo(0.46, 0),
+      superficieCuerpo(0.42, -0.54),
     ], paleta.raya, 0.22);
     agregarTubo(pez, [
-      supCuerpo(-0.74, 0.02), supCuerpo(-0.15, 0.02), supCuerpo(0.38, 0.02),
+      superficieCuerpo(-0.74, 0.02),
+      superficieCuerpo(-0.15, 0.02),
+      superficieCuerpo(0.38, 0.02),
     ], paleta.lomo, 0.16);
-    for (const r of perfil.rayas) {
+    for (const raya of perfil.rayas) {
       agregarTubo(pez, [
-        supCuerpo(r, 0.66), supCuerpo(r, 0), supCuerpo(r, -0.62),
+        superficieCuerpo(raya, 0.66),
+        superficieCuerpo(raya, 0),
+        superficieCuerpo(raya, -0.62),
       ], paleta.raya, 0.36);
     }
 
-    // Aleta dorsal
-    const dorsal = new THREE.Group();
-    dorsal.name = "dorsal";
-    dorsal.position.set(-medioLargo * 0.02, medioAlto * 0.63, 0);
-    dorsal.add(extruirAleta([
+    const aletaDorsal = new THREE.Group();
+    aletaDorsal.name = "dorsal";
+    aletaDorsal.position.set(-medioLargo * 0.02, medioAlto * 0.63, 0);
+    aletaDorsal.add(extruirAleta([
       [-largo * 0.16, 0], [-largo * 0.08, alto * 0.40],
       [largo * 0.01, alto * 0.31], [largo * 0.14, 0],
     ], paleta.aleta));
-    pez.add(dorsal);
+    pez.add(aletaDorsal);
 
-    // Aleta anal
-    const anal = extruirAleta([
-      [-largo * 0.16, 0], [-largo * 0.04, -alto * 0.24], [largo * 0.10, 0],
+    const aletaAnal = extruirAleta([
+      [-largo * 0.16, 0], [-largo * 0.04, -alto * 0.24],
+      [largo * 0.10, 0],
     ], paleta.aleta);
-    anal.position.set(-medioLargo * 0.48, -medioAlto * 0.62, medioAncho * 0.2);
-    pez.add(anal);
+    aletaAnal.position.set(-medioLargo * 0.48, -medioAlto * 0.62, medioAncho * 0.2);
+    pez.add(aletaAnal);
 
-    // Cola
     const cola = new THREE.Group();
     cola.name = "tail";
     cola.position.set(-medioLargo * 0.92, 0, 0);
     cola.add(extruirAleta([
-      [0, 0], [-largo * 0.25, alto * 0.32], [-largo * 0.17, 0], [-largo * 0.25, -alto * 0.32],
+      [0, 0], [-largo * 0.25, alto * 0.32],
+      [-largo * 0.17, 0], [-largo * 0.25, -alto * 0.32],
     ], paleta.aleta));
     pez.add(cola);
 
-    // Pectorales
     const pectorales = [];
     for (const lado of [-1, 1]) {
-      const p = new THREE.Group();
-      p.name = `pectoral-${lado}`;
-      p.position.set(medioLargo * 0.05, -medioAlto * 0.07, lado * medioAncho * 0.82);
-      p.add(extruirAleta([
-        [0, 0], [-largo * 0.15, -alto * 0.29], [largo * 0.07, -alto * 0.20],
+      const pectoral = new THREE.Group();
+      pectoral.name = `pectoral-${lado}`;
+      pectoral.position.set(medioLargo * 0.05, -medioAlto * 0.07, lado * medioAncho * 0.82);
+      pectoral.add(extruirAleta([
+        [0, 0], [-largo * 0.15, -alto * 0.29],
+        [largo * 0.07, -alto * 0.20],
       ], paleta.aleta));
-      pez.add(p);
-      pectorales.push(p);
+      pez.add(pectoral);
+      pectorales.push(pectoral);
     }
 
-    // Barbillas (bagre, doncella, capaz) — se animan con el nado
-    let barbillas = null;
     if (["bagre", "doncella", "capaz"].includes(perfil.especie)) {
-      barbillas = new THREE.Group();
-      barbillas.name = "barbillas";
       for (const lado of [-1, 1]) {
-        agregarTubo(barbillas, [
+        agregarTubo(pez, [
           [medioLargo * 0.87, -medioAlto * 0.08, lado * medioAncho * 0.48],
           [medioLargo * 1.02, -medioAlto * 0.23, lado * medioAncho * 0.63],
           [medioLargo * 1.17, -medioAlto * 0.25, lado * medioAncho * 0.72],
         ], paleta.vientre, 0.17);
       }
-      pez.add(barbillas);
     }
 
-    // Posición inicial dentro de la franja del agua
     const pantallaY = 466 - perfil.profundidad / 100 * (466 - superficie);
     const minY = superficie + alto * 0.6 + 7;
     const maxY = 466 - alto * 0.65;
@@ -1225,13 +1266,11 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
     pez.position.set(perfil.x - 170, 250 - y, (indice % 3) * 0.12);
     escena.add(pez);
     return {
-      group: pez, geometry: geo, baseVertices: originales,
-      vertices: geo.attributes.position, tail: cola, dorsal, pectorals, barbillas,
-      baseY: y, height: alto, length: largo,
-      minY, maxY: Math.max(minY, maxY),
-      phase: perfil.fase, speedFactor: perfil.velocidad,
-      target: null, wrapGhost: null,
-      frameNormales: 0, orientTarget: 1,   // +1 → mira a la derecha; -1 → mira a la izquierda
+      group: pez, geometry: cuerpoGeometria, baseVertices: originales,
+      vertices: cuerpoGeometria.attributes.position, tail: cola,
+      dorsal: aletaDorsal, pectorals: pectorales, baseY: y,
+      height: alto, length: largo, minY, maxY: Math.max(minY, maxY),
+      phase: perfil.fase, speedFactor: perfil.velocidad, target: null, wrapGhost: null,
     };
   }
 
@@ -1239,12 +1278,12 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
   const anchoEscena = 340;
   const limiteInferior = 466;
   const limiteSuperior = superficie + 20;
+  const intensidadMovimiento = reducido ? 0.25 : 1;
 
   function copiarArticulacion(pez, fantasma) {
     fantasma.position.copy(pez.group.position);
     fantasma.position.x -= anchoEscena;
     fantasma.rotation.copy(pez.group.rotation);
-    fantasma.scale.copy(pez.group.scale);
     fantasma.getObjectByName("tail").rotation.copy(pez.tail.rotation);
     fantasma.getObjectByName("dorsal").rotation.copy(pez.dorsal.rotation);
     for (const lado of [-1, 1]) {
@@ -1261,26 +1300,17 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
     pez.tail = pez.group.getObjectByName("tail");
     pez.dorsal = pez.group.getObjectByName("dorsal");
     pez.pectorals = [-1, 1].map((lado) => pez.group.getObjectByName(`pectoral-${lado}`));
-    pez.barbillas = pez.group.getObjectByName("barbillas");
     if (pez.target && pez.target.wrap) {
       pez.target.x -= anchoEscena;
       pez.target.wrap = false;
     }
   }
 
-  // Redimensionado: ajusta cámara al aspect-ratio real del panel
   function redimensionar() {
     const caja = panel.getBoundingClientRect();
     if (!caja.width || !caja.height) return;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(caja.width, caja.height, false);
-    // Mantiene 340 unidades de ancho lógico; el alto se expande según el panel
-    const alto = 500 * (caja.height / caja.width) / (500 / 340);
-    camara.left   = -170;
-    camara.right  =  170;
-    camara.top    =  alto / 2;
-    camara.bottom = -alto / 2;
-    camara.updateProjectionMatrix();
   }
   if (window.ResizeObserver) new ResizeObserver(redimensionar).observe(panel);
   else window.addEventListener("resize", redimensionar);
@@ -1288,111 +1318,78 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
 
   let tiempoPrevio = performance.now();
   let tiempo = 0;
-  let rafId = null;
-
-  // Helpers de ángulo / orientación
-  function objetivoAngulo(ang) {
-    // Mantén el pez "cabeza a la derecha" (escala +1) o "cabeza a la izquierda" (-1)
-    return Math.cos(ang) >= 0 ? 1 : -1;
-  }
-
   function animar(marca) {
-    rafId = requestAnimationFrame(animar);
+    requestAnimationFrame(animar);
     const delta = Math.min((marca - tiempoPrevio) / 1000, 0.04);
     tiempoPrevio = marca;
     tiempo += delta;
-    const potencia = movimiento.amplitud;
+    const potencia = movimiento.amplitud * (reducido ? 0.2 : 1);
 
     for (const pez of peces) {
-      // ── Ondulación del cuerpo (cabeza→cola) y cola
       const faseNado = tiempo * (2.4 + pez.speedFactor * 0.45) + pez.phase * Math.PI * 2;
-      const pos = pez.vertices;
-      for (let i = 0; i < pos.count; i++) {
-        const o = i * 3;
-        const x = pez.baseVertices[o];
+      const posiciones = pez.vertices;
+      for (let i = 0; i < posiciones.count; i++) {
+        const offset = i * 3;
+        const x = pez.baseVertices[offset];
         const dorsalidad = Math.max(0, -x / (pez.length * 0.36));
-        const onda = Math.sin(faseNado - x * 0.22)
-                   * pez.height * 0.055 * potencia * dorsalidad ** 1.5;
-        pos.array[o]     = pez.baseVertices[o];
-        pos.array[o + 1] = pez.baseVertices[o + 1] + onda;
-        pos.array[o + 2] = pez.baseVertices[o + 2]
+        const onda = Math.sin(faseNado - x * 0.22) * pez.height * 0.055 * potencia * dorsalidad ** 1.5;
+        posiciones.array[offset] = pez.baseVertices[offset];
+        posiciones.array[offset + 1] = pez.baseVertices[offset + 1] + onda;
+        posiciones.array[offset + 2] = pez.baseVertices[offset + 2]
           + Math.cos(faseNado - x * 0.22) * pez.height * 0.018 * potencia * dorsalidad;
       }
-      pos.needsUpdate = true;
-      if (++pez.frameNormales % 2 === 0) pez.geometry.computeVertexNormals();
-
-      // Aletas
-      pez.tail.rotation.z = Math.sin(faseNado * 1.5) * movimiento.cola * potencia;
+      posiciones.needsUpdate = true;
+      pez.geometry.computeVertexNormals();
+      pez.tail.rotation.z = Math.sin(faseNado * 1.5) * 0.52 * potencia;
       pez.dorsal.rotation.z = Math.sin(faseNado * 0.75) * 0.09 * potencia;
-      pez.pectorals.forEach((a, i) => {
-        a.rotation.x = Math.sin(faseNado * 1.2 + i * Math.PI) * 0.24 * potencia;
-        a.rotation.z = Math.sin(faseNado + i * Math.PI) * 0.07 * potencia;
+      pez.pectorals.forEach((aleta, index) => {
+        aleta.rotation.x = Math.sin(faseNado * 1.2 + index * Math.PI) * 0.24 * potencia;
+        aleta.rotation.z = Math.sin(faseNado + index * Math.PI) * 0.07 * potencia;
       });
-      if (pez.barbillas) {
-        pez.barbillas.rotation.x = Math.sin(faseNado * 0.9) * 0.18 * potencia;
-      }
 
-      // ── Movimiento: persecución de comida o avance libre
-      let anguloObjetivo = 0;
-      let persiguiendo = false;
+      let angulo = 0;
+      let avanzando = true;
       if (pez.target && tiempo < pez.target.hasta) {
         const dx = pez.target.x - pez.group.position.x;
         const dy = pez.target.y - pez.group.position.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 6) {
-          anguloObjetivo = Math.atan2(dy, dx);
-          persiguiendo = true;
-          const paso = movimiento.velocidad * 2.2 * movimiento.reaccion * delta;
-          pez.group.position.x += Math.cos(anguloObjetivo) * paso;
-          pez.group.position.y += Math.sin(anguloObjetivo) * paso;
+        const distancia = Math.hypot(dx, dy);
+        if (distancia > 3) {
+          angulo = Math.atan2(dy, dx);
+          avanzando = false;
+          const paso = movimiento.velocidad * movimiento.reaccion * delta * intensidadMovimiento;
+          pez.group.position.x += Math.cos(angulo) * paso;
+          pez.group.position.y += Math.sin(angulo) * paso;
         } else {
-          if (!pez.target.llegada) pez.target.llegada = tiempo + 0.8;
+          if (!pez.target.llegada) pez.target.llegada = tiempo + 0.65;
           if (tiempo < pez.target.llegada) {
-            anguloObjetivo = Math.atan2(dy, dx);
-            persiguiendo = true;
-          } else {
-            pez.target = null;
-          }
+            angulo = Math.atan2(dy, dx);
+            avanzando = false;
+          } else pez.target = null;
         }
-      } else {
-        pez.target = null;
-      }
+      } else pez.target = null;
 
-      if (!persiguiendo) {
-        // Avance libre de izquierda a derecha
-        const vel = movimiento.velocidad * pez.speedFactor;
-        pez.group.position.x += vel * delta;
-        // Deriva vertical suave dentro de la franja del agua
+      if (avanzando) {
+        const velocidad = movimiento.velocidad * pez.speedFactor * intensidadMovimiento;
+        pez.group.position.x += velocidad * delta;
         const deriva = Math.sin(faseNado * 0.42) * movimiento.amplitud * 3.2;
-        const yObjetivo = THREE.MathUtils.clamp(pez.baseY + deriva, pez.minY, pez.maxY);
+        const y = THREE.MathUtils.clamp(pez.baseY + deriva, pez.minY, pez.maxY);
         pez.group.position.y = THREE.MathUtils.damp(
-          pez.group.position.y, 250 - yObjetivo, 2.1, delta
+          pez.group.position.y, 250 - y, 2.1, delta
         );
-        // Cabeceo sutil (no acumulativo)
-        const cabeceo = Math.sin(faseNado * 0.52) * 0.025 * potencia;
-        pez.group.rotation.z = THREE.MathUtils.damp(
-          pez.group.rotation.z, cabeceo, 3.0, delta
-        );
-        // Orientación: siempre mira a +X (derecha)
-        pez.orientTarget = 1;
       } else {
-        // Mientras persigue, orienta suavemente cabeza al objetivo
-        const objetivo = Math.atan2(Math.sin(anguloObjetivo), Math.cos(anguloObjetivo));
+        const objetivo = Math.atan2(Math.sin(angulo), Math.cos(angulo));
         const actual = pez.group.rotation.z;
-        const dif = Math.atan2(Math.sin(objetivo - actual), Math.cos(objetivo - actual));
-        pez.group.rotation.z += dif * Math.min(1, delta * movimiento.reaccion * 4);
-        pez.orientTarget = objetivoAngulo(anguloObjetivo);
+        const diferencia = Math.atan2(Math.sin(objetivo - actual), Math.cos(objetivo - actual));
+        pez.group.rotation.z += diferencia * Math.min(1, delta * movimiento.reaccion * 4);
+      }
+      if (avanzando) {
+        const cabeceo = Math.sin(faseNado * 0.52) * 0.025 * potencia;
+        const actual = pez.group.rotation.z;
+        pez.group.rotation.z += Math.atan2(
+          Math.sin(cabeceo - actual), Math.cos(cabeceo - actual)
+        ) * Math.min(1, delta * 2.2);
       }
 
-      // Escala X según orientación (+1 → derecha, -1 → izquierda), suavizada
-      const escalaObjetivo = pez.orientTarget;
-      pez.group.scale.x = THREE.MathUtils.damp(pez.group.scale.x, escalaObjetivo, 6, delta);
-      if (Math.abs(pez.group.scale.x) < 0.05) {
-        // Evita "aplanarse" durante el giro
-        pez.group.scale.x = 0.05 * Math.sign(escalaObjetivo || 1);
-      }
-
-      // ── Wrap-around horizontal con "fantasma" para continuidad visual
       const screenX = pez.group.position.x + 170;
       const medio = pez.length * 0.62;
       if (!pez.wrapGhost && screenX >= anchoEscena - medio) {
@@ -1407,59 +1404,48 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
           pez.group.rotation.z = 0;
         }
       }
-
-      // ── Clamp vertical para no tapar la regla ni las etiquetas
-      const yActual = 250 - pez.group.position.y;
-      if (yActual < limiteSuperior + pez.height * 0.45) {
+      const actualY = 250 - pez.group.position.y;
+      if (actualY < limiteSuperior + pez.height * 0.45) {
         pez.group.position.y = 250 - (limiteSuperior + pez.height * 0.45);
-      } else if (yActual > limiteInferior - pez.height * 0.55) {
+      } else if (actualY > limiteInferior - pez.height * 0.55) {
         pez.group.position.y = 250 - (limiteInferior - pez.height * 0.55);
       }
     }
     renderer.render(escena, camara);
   }
-
-  // ── Interacción: alimentar peces
   panel.addEventListener("fish-feed", (evento) => {
     const x = THREE.MathUtils.clamp(evento.detail.x, 0, anchoEscena) - 170;
     const y = THREE.MathUtils.clamp(evento.detail.y, superficie + 20, limiteInferior);
     const objetivo = new THREE.Vector3(x, 250 - y, 0);
     const cercanos = peces
       .map((pez) => {
-        let dist = Math.hypot(
-          pez.group.position.x - objetivo.x, pez.group.position.y - objetivo.y
+        let distancia = Math.hypot(
+          pez.group.position.x - objetivo.x,
+          pez.group.position.y - objetivo.y
         );
-        let xObj = objetivo.x;
-        let desdeFantasma = false;
+        let objetivoX = objetivo.x;
+        let vieneDeFantasma = false;
         if (pez.wrapGhost) {
-          const dF = Math.hypot(
+          const distanciaFantasma = Math.hypot(
             pez.group.position.x - anchoEscena - objetivo.x,
             pez.group.position.y - objetivo.y
           );
-          if (dF < dist) { dist = dF; xObj += anchoEscena; desdeFantasma = true; }
+          if (distanciaFantasma < distancia) {
+            distancia = distanciaFantasma;
+            objetivoX += anchoEscena;
+            vieneDeFantasma = true;
+          }
         }
-        return {pez, dist, xObj, desdeFantasma};
+        return {pez, distancia, objetivoX, vieneDeFantasma};
       })
-      .filter(({dist}) => dist < 145)
-      .sort((a, b) => a.dist - b.dist)
+      .filter(({distancia}) => distancia < 145)
+      .sort((a, b) => a.distancia - b.distancia)
       .slice(0, 3);
-    for (const {pez, xObj, desdeFantasma} of cercanos) {
-      pez.target = {x: xObj, y: objetivo.y, hasta: tiempo + 3.5, wrap: desdeFantasma};
+    for (const {pez, objetivoX, vieneDeFantasma} of cercanos) {
+      pez.target = {x: objetivoX, y: objetivo.y, hasta: tiempo + 3.5, wrap: vieneDeFantasma};
     }
   });
-
-  // ── Pausa cuando la pestaña no está visible (ahorro de batería)
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden && rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    } else if (!document.hidden && !rafId) {
-      tiempoPrevio = performance.now();
-      rafId = requestAnimationFrame(animar);
-    }
-  });
-
-  rafId = requestAnimationFrame(animar);
+  requestAnimationFrame(animar);
 })();
 </script>
 """
