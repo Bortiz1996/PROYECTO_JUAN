@@ -29,7 +29,7 @@ ESTACION_LATITUD = 10.243275
 ESTACION_LONGITUD = -74.915017
 ESTACION_ALTITUD_MSNM = 8
 NIVEL_REFERENCIA_CM = 950
-NIVEL_MURALLA_CM = 1000   # cota de la muralla: el nivel 10 m llega hasta ella
+NIVEL_MURALLA_CM = 1000
 JUAN_ICON_PATH = Path(__file__).parent / "assets" / "juan_icon.png"
 JUAN_COVER_PATH = Path(__file__).parent / "assets" / "juan_portada.webp"
 CSV_PATH = Path(__file__).with_name("nivel_calamar.csv")
@@ -57,7 +57,6 @@ METEO_LONGITUD = -74.91574
 METEO_ZONA_HORARIA = "America/Bogota"
 HORIZONTE_METEO_HORAS = 24
 
-# Enlace oficial del observatorio para compartir.
 APP_URL = "https://ing-ambiente-proyect1001.github.io/PROYECTO_JUAN/"
 
 # ── Umbrales de alerta en cm. Solo configurar cotas oficiales verificadas.
@@ -65,7 +64,7 @@ UMBRAL_AMARILLA_CM: float | None = None
 UMBRAL_NARANJA_CM: float | None = None
 UMBRAL_ROJA_CM: float | None = None
 
-DIAS_MAX_SIN_DATOS = 3       # si el último dato es más viejo, se advierte
+DIAS_MAX_SIN_DATOS = 3
 PERIODOS_GRAFICA = {
     "Últimos 60 días": 60,
     "Último año": 365,
@@ -76,155 +75,94 @@ PERIODOS_GRAFICA = {
 
 MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
-st.set_page_config(
-    page_title="JUAN",
-    page_icon=JUAN_ICON_PATH,
-    layout="wide",
-)
 
-st.markdown(
-    """
-    <style>
-      [data-testid="stAppViewContainer"] {background: #f3f6f8;}
-      [data-testid="stHeader"] {background: rgba(243, 246, 248, 0.9);}
-      .block-container {padding: 2.4rem 2rem 3rem; max-width: 1120px;}
-      h1, h2, h3 {color: #122a3a !important; letter-spacing: -0.035em;}
-      h1 {font-size: 2.35rem !important; font-weight: 700 !important; margin-bottom: .15rem !important;}
-      h2, h3 {font-weight: 650 !important;}
-      [data-testid="stMarkdownContainer"] p,
-      [data-testid="stMarkdownContainer"] li {color: #334c5b !important;}
-      [data-testid="stMarkdownContainer"] a {color: #075b73 !important;
-        text-decoration: underline; text-underline-offset: 2px;}
-      [data-testid="stCaptionContainer"],
-      [data-testid="stCaptionContainer"] p {color: #405868 !important;}
-      [data-testid="stAlert"] {border-radius: 10px;}
-      [data-testid="stMetric"] {background: #fff; border: 1px solid #dfe7ec;
-        border-radius: 10px; padding: 1rem 1.1rem; min-height: 112px;}
-      [data-testid="stMetricLabel"] p {color: #496473 !important; font-size: .78rem;
-        font-weight: 700; letter-spacing: .04em; text-transform: uppercase;}
-      [data-testid="stMetricValue"] {color: #17384a !important; font-size: 1.55rem;}
-      [data-testid="stDownloadButton"] button, [data-testid="stLinkButton"] a {
-        border-radius: 8px; font-weight: 600;
-      }
-      .eyebrow {color: #527080; font-size: .73rem; font-weight: 700;
-        letter-spacing: .13em; text-transform: uppercase;}
-      .profile-card {position: relative; overflow: hidden; margin: 0 auto 2rem;
-        background: #fff; border: 1px solid #dfe7ec; border-radius: 16px;
-        box-shadow: 0 8px 26px rgba(20, 45, 60, .06);}
-      .profile-cover {position: relative; overflow: hidden; height: 180px; background:
-        radial-gradient(ellipse at 18% 120%, rgba(114, 198, 186, .75), transparent 42%),
-        radial-gradient(ellipse at 88% 110%, rgba(76, 158, 177, .85), transparent 48%),
-        linear-gradient(125deg, #123d53, #087f98 62%, #55a9ad);}
-      .profile-cover::before {content: ""; position: absolute; inset: 0;
-        background-image: var(--cover-image); background-position: center 58%;
-        background-size: cover; opacity: .42;}
-      .profile-avatar {position: absolute; top: 104px; left: 50%; width: 144px;
-        height: 144px; transform: translateX(-50%); object-fit: cover;
-        border: 5px solid #fff; border-radius: 50%;
-        box-shadow: 0 4px 14px rgba(20, 45, 60, .18);}
-      .profile-content {padding: 78px 24px 24px; text-align: center;}
-      .profile-content h1 {display: inline-block; min-width: 250px; box-sizing: border-box;
-        color: #fff !important; background: linear-gradient(110deg, #123d53, #087f98 70%, #1b99a4);
-        border-radius: 12px; box-shadow: 0 6px 16px rgba(8, 77, 94, .2);
-        font-size: 3.2rem !important; font-weight: 900 !important;
-        letter-spacing: .1em !important; line-height: 1.05;
-        margin: 0 0 .65rem !important; padding: .18em .42em .2em;}
-      .profile-content h1::after {content: ""; display: block; width: 32%; height: 3px;
-        margin: .1em auto 0; border-radius: 99px; background: #9ee3d6;}
-      .profile-content h2 {font-size: 1.35rem !important; margin: .1rem 0 .55rem !important;}
-      .profile-content p {color: #405868; margin: 0;}
-      .reading-card {background: #fff; border: 1px solid #dfe7ec; border-radius: 14px;
-        padding: 1.6rem 1.8rem; box-shadow: 0 8px 26px rgba(20, 45, 60, .06);}
-      .reading-value {color: #102b3b; font-size: clamp(3rem, 7vw, 5rem);
-        font-weight: 720; letter-spacing: -.06em; line-height: 1.05; margin: .55rem 0 .1rem;}
-      .reading-value span {font-size: 1.15rem; font-weight: 600; letter-spacing: 0; color: #607989;}
-      .reading-conversion {color: #607989; font-size: 1rem; font-weight: 600;}
-      .reading-divider {height: 1px; background: #e6edf1; margin: 1.2rem 0;}
-      .reading-detail {color: #536b79; font-size: .92rem; line-height: 1.7;}
-      .status-note {background: #edf3f6; border-left: 3px solid #527d91; border-radius: 5px;
-        color: #3d5a69; font-size: .88rem; line-height: 1.5; padding: .8rem 1rem;}
-      .forecast-note {background: #fff; border: 1px solid #dfe7ec; border-radius: 10px;
-        color: #536b79; line-height: 1.55; padding: 1rem 1.15rem;}
-      .forecast-value {color: #17384a; font-size: 1.45rem; font-weight: 700; margin: .25rem 0;}
-      .forecast-caveat {color: #607989; font-size: .8rem; margin-bottom: 0;}
-      .gauge-panel {position: relative; width: min(100%, 340px); aspect-ratio: 340 / 500;
-        margin: 0 auto; overflow: hidden; border-radius: 16px; background: #1b5a85;
-        font-family: Arial, sans-serif; box-shadow: 0 8px 26px rgba(20, 45, 60, .14);}
-      .gauge-scene {display: block; width: 100%; height: 100%;}
-      .jn-ola {animation: jn-ola var(--dur, 9s) linear infinite; animation-delay: var(--delay, 0s);}
-      @keyframes jn-ola {
-        from {transform: translateX(0);}
-        to {transform: translateX(-340px);}
-      }
-      .jn-nube {animation: jn-nube var(--dur) linear infinite; animation-delay: var(--delay);}
-      @keyframes jn-nube {
-        from {transform: translateX(-100px);}
-        to {transform: translateX(440px);}
-      }
-      .jn-ave {animation: jn-vuelo var(--dur) linear infinite; animation-delay: var(--delay);}
-      .jn-ave path {transform-box: fill-box; transform-origin: center;
-        animation: jn-aleteo .4s ease-in-out infinite alternate;}
-      @keyframes jn-vuelo {
-        from {transform: translate(-30px, 0);}
-        to {transform: translate(370px, -18px);}
-      }
-      @keyframes jn-aleteo {
-        from {transform: scaleY(1);}
-        to {transform: scaleY(.3);}
-      }
-      .jn-bote {transform-box: fill-box; transform-origin: center bottom;
-        animation: jn-bote var(--dur) ease-in-out infinite; animation-delay: var(--delay);}
-      @keyframes jn-bote {
-        0%, 100% {transform: translateY(0) rotate(-.9deg);}
-        50% {transform: translateY(-1.6px) rotate(1deg);}
-      }
-      .jn-camina {animation: jn-camina 18s linear infinite;}
-      @keyframes jn-camina {
-        0% {transform: translateX(0) scaleX(1);}
-        47% {transform: translateX(58px) scaleX(1);}
-        50% {transform: translateX(58px) scaleX(-1);}
-        97% {transform: translateX(0) scaleX(-1);}
-        100% {transform: translateX(0) scaleX(1);}
-      }
-      .jn-pierna {transform-box: fill-box; transform-origin: center top;
-        animation: jn-paso .55s ease-in-out infinite alternate;}
-      .jn-pierna + .jn-pierna {animation-direction: alternate-reverse;}
-      @keyframes jn-paso {
-        from {transform: rotate(-24deg);}
-        to {transform: rotate(24deg);}
-      }
-      .jn-respira {animation: jn-respira 3.2s ease-in-out infinite;}
-      @keyframes jn-respira {
-        0%, 100% {transform: translateY(0);}
-        50% {transform: translateY(-.7px);}
-      }
-      .jn-burbuja {animation: jn-burbuja var(--dur) ease-in infinite; animation-delay: var(--delay);}
-      @keyframes jn-burbuja {
-        0% {transform: translateY(0); opacity: 0;}
-        12% {opacity: .8;}
-        90% {opacity: .5;}
-        100% {transform: translateY(calc(var(--sube) * -1)); opacity: 0;}
-      }
-      @media (prefers-reduced-motion: reduce) {
-          .jn-ola, .jn-ave path, .jn-bote, .jn-camina, .jn-pierna, .jn-respira,
-          .jn-burbuja {
-            animation: none;
+# ═══════════════════════════ ESTILOS ═══════════════════════════
+def inyectar_estilos() -> None:
+    st.markdown(
+        """
+        <style>
+          [data-testid="stAppViewContainer"] {background: #f3f6f8;}
+          [data-testid="stHeader"] {background: rgba(243, 246, 248, 0.9);}
+          .block-container {padding: 2.4rem 2rem 3rem; max-width: 1120px;}
+          h1, h2, h3 {color: #122a3a !important; letter-spacing: -0.035em;}
+          h1 {font-size: 2.35rem !important; font-weight: 700 !important; margin-bottom: .15rem !important;}
+          h2, h3 {font-weight: 650 !important;}
+          [data-testid="stMarkdownContainer"] p,
+          [data-testid="stMarkdownContainer"] li {color: #334c5b !important;}
+          [data-testid="stMarkdownContainer"] a {color: #075b73 !important;
+            text-decoration: underline; text-underline-offset: 2px;}
+          [data-testid="stCaptionContainer"],
+          [data-testid="stCaptionContainer"] p {color: #405868 !important;}
+          [data-testid="stAlert"] {border-radius: 10px;}
+          [data-testid="stMetric"] {background: #fff; border: 1px solid #dfe7ec;
+            border-radius: 10px; padding: 1rem 1.1rem; min-height: 112px;}
+          [data-testid="stMetricLabel"] p {color: #496473 !important; font-size: .78rem;
+            font-weight: 700; letter-spacing: .04em; text-transform: uppercase;}
+          [data-testid="stMetricValue"] {color: #17384a !important; font-size: 1.55rem;}
+          [data-testid="stDownloadButton"] button, [data-testid="stLinkButton"] a {
+            border-radius: 8px; font-weight: 600;
           }
-          .jn-ave {display: none;}
-          .jn-nube {animation: none; transform: translateX(var(--reposo));}
-          .jn-burbuja {opacity: .5;}
-      }
-      @media (max-width: 640px) {
-        .block-container {padding: 1.25rem 1rem 2rem;}
-        h1 {font-size: 1.8rem !important;}
-        .reading-card {padding: 1.2rem;}
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+          .eyebrow {color: #527080; font-size: .73rem; font-weight: 700;
+            letter-spacing: .13em; text-transform: uppercase;}
+          .profile-card {position: relative; overflow: hidden; margin: 0 auto 2rem;
+            background: #fff; border: 1px solid #dfe7ec; border-radius: 16px;
+            box-shadow: 0 8px 26px rgba(20, 45, 60, .06);}
+          .profile-cover {position: relative; overflow: hidden; height: 180px; background:
+            radial-gradient(ellipse at 18% 120%, rgba(114, 198, 186, .75), transparent 42%),
+            radial-gradient(ellipse at 88% 110%, rgba(76, 158, 177, .85), transparent 48%),
+            linear-gradient(125deg, #123d53, #087f98 62%, #55a9ad);}
+          .profile-cover::before {content: ""; position: absolute; inset: 0;
+            background-image: var(--cover-image); background-position: center 58%;
+            background-size: cover; opacity: .42;}
+          .profile-avatar {position: absolute; top: 104px; left: 50%; width: 144px;
+            height: 144px; transform: translateX(-50%); object-fit: cover;
+            border: 5px solid #fff; border-radius: 50%;
+            box-shadow: 0 4px 14px rgba(20, 45, 60, .18);}
+          .profile-content {padding: 78px 24px 24px; text-align: center;}
+          .profile-content h1 {display: inline-block; min-width: 250px; box-sizing: border-box;
+            color: #fff !important; background: linear-gradient(110deg, #123d53, #087f98 70%, #1b99a4);
+            border-radius: 12px; box-shadow: 0 6px 16px rgba(8, 77, 94, .2);
+            font-size: 3.2rem !important; font-weight: 900 !important;
+            letter-spacing: .1em !important; line-height: 1.05;
+            margin: 0 0 .65rem !important; padding: .18em .42em .2em;}
+          .profile-content h1::after {content: ""; display: block; width: 32%; height: 3px;
+            margin: .1em auto 0; border-radius: 99px; background: #9ee3d6;}
+          .profile-content h2 {font-size: 1.35rem !important; margin: .1rem 0 .55rem !important;}
+          .profile-content p {color: #405868; margin: 0;}
+          .reading-card {background: #fff; border: 1px solid #dfe7ec; border-radius: 14px;
+            padding: 1.6rem 1.8rem; box-shadow: 0 8px 26px rgba(20, 45, 60, .06);}
+          .reading-value {color: #102b3b; font-size: clamp(3rem, 7vw, 5rem);
+            font-weight: 720; letter-spacing: -.06em; line-height: 1.05; margin: .55rem 0 .1rem;}
+          .reading-value span {font-size: 1.15rem; font-weight: 600; letter-spacing: 0; color: #607989;}
+          .reading-conversion {color: #607989; font-size: 1rem; font-weight: 600;}
+          .reading-divider {height: 1px; background: #e6edf1; margin: 1.2rem 0;}
+          .reading-detail {color: #536b79; font-size: .92rem; line-height: 1.7;}
+          .status-note {background: #edf3f6; border-left: 3px solid #527d91; border-radius: 5px;
+            color: #3d5a69; font-size: .88rem; line-height: 1.5; padding: .8rem 1rem;}
+          .forecast-note {background: #fff; border: 1px solid #dfe7ec; border-radius: 10px;
+            color: #536b79; line-height: 1.55; padding: 1rem 1.15rem;}
+          .forecast-caveat {color: #607989; font-size: .8rem; margin-bottom: 0;}
+          .weather-card {background: #fff; border: 1px solid #dfe7ec; border-radius: 12px;
+            padding: 1rem 1.15rem; display: flex; align-items: center; gap: 1rem;
+            box-shadow: 0 4px 16px rgba(20, 45, 60, .05); margin-top: .9rem;}
+          .weather-icon {font-size: 2.3rem; line-height: 1; flex-shrink: 0;}
+          .weather-body {flex: 1; min-width: 0;}
+          .weather-label {color: #527080; font-size: .68rem; font-weight: 700;
+            letter-spacing: .12em; text-transform: uppercase; margin-bottom: .15rem;}
+          .weather-desc {color: #17384a; font-size: 1.02rem; font-weight: 700; line-height: 1.2;}
+          .weather-meta {color: #607989; font-size: .82rem; margin-top: .2rem;}
+          @media (max-width: 640px) {
+            .block-container {padding: 1.25rem 1rem 2rem;}
+            h1 {font-size: 1.8rem !important;}
+            .reading-card {padding: 1.2rem;}
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
+# ═══════════════════════════ HELPERS DE FORMATO ═══════════════════════════
 def fecha_es(ts: pd.Timestamp, con_hora: bool = False) -> str:
     s = f"{ts.day} {MESES[ts.month - 1]} {ts.year}"
     return f"{s}, {ts:%H:%M}" if con_hora else s
@@ -254,6 +192,31 @@ def describir_tiempo(codigo: int) -> str:
     return "Condición variable"
 
 
+def icono_tiempo(codigo: int | None, noche: bool) -> str:
+    """Devuelve un emoji que representa el estado del tiempo."""
+    if codigo is None:
+        return "🌡️"
+    if codigo in (95, 96, 99):
+        return "⛈️"
+    if codigo in (51, 53, 55, 56, 57):
+        return "🌦️"
+    if codigo in (61, 63, 65, 66, 67, 80, 81, 82):
+        return "🌧️"
+    if codigo in (71, 73, 75, 77, 85, 86):
+        return "🌨️"
+    if codigo in (45, 48):
+        return "🌫️"
+    if codigo == 3:
+        return "☁️"
+    if codigo == 2:
+        return "🌤️" if not noche else "☁️"
+    if codigo == 1:
+        return "🌤️" if not noche else "🌙"
+    if codigo == 0:
+        return "☀️" if not noche else "🌙"
+    return "🌡️"
+
+
 def tipo_ambiente(codigo: int | None) -> str:
     if codigo in (95, 96, 99):
         return "tormenta"
@@ -264,6 +227,7 @@ def tipo_ambiente(codigo: int | None) -> str:
     return "despejado"
 
 
+# ═══════════════════════════ CARGA DE DATOS ═══════════════════════════
 @st.cache_data(ttl=900, show_spinner=False)
 def cargar_meteorologia() -> dict:
     respuesta = METEO_SESSION.get(
@@ -285,11 +249,11 @@ def cargar_meteorologia() -> dict:
     if not isinstance(actual, dict):
         raise ValueError("La respuesta meteorológica no contiene condiciones actuales para Calamar.")
 
-    requeridos_actual = (
+    requeridos = (
         "time", "temperature_2m", "relative_humidity_2m",
         "precipitation", "weather_code", "wind_speed_10m",
     )
-    if any(actual.get(clave) is None for clave in requeridos_actual):
+    if any(actual.get(clave) is None for clave in requeridos):
         raise ValueError("Faltan variables meteorológicas actuales en la respuesta.")
     return actual
 
@@ -329,8 +293,8 @@ def cargar_pronostico_cuenca(hora_inicio: str) -> pd.DataFrame:
         respuesta = METEO_SESSION.get(
             METEO_URL,
             params={
-                "latitude": ",".join(f"{latitud:.5f}" for latitud in lote["Latitud"]),
-                "longitude": ",".join(f"{longitud:.5f}" for longitud in lote["Longitud"]),
+                "latitude": ",".join(f"{lat:.5f}" for lat in lote["Latitud"]),
+                "longitude": ",".join(f"{lon:.5f}" for lon in lote["Longitud"]),
                 "hourly": "precipitation",
                 "forecast_days": 2,
                 "timezone": METEO_ZONA_HORARIA,
@@ -386,9 +350,7 @@ def cargar_pronostico_cuenca(hora_inicio: str) -> pd.DataFrame:
     return resumen[["FechaHora", "Precipitacion_mm"]].reset_index(drop=True)
 
 
-def estimar_tendencia_nivel(
-    niveles: pd.DataFrame,
-) -> tuple[str, str]:
+def estimar_tendencia_nivel(niveles: pd.DataFrame) -> tuple[str, str]:
     lecturas = (
         niveles.dropna(subset=["Fecha", "Nivel_cm"])
         .sort_values("Fecha")
@@ -416,13 +378,10 @@ def estimar_tendencia_nivel(
 
     pendientes = []
     for (_, lectura_a), (_, lectura_b) in combinations(recientes.iterrows(), 2):
-        dias_entre_lecturas = (
-            lectura_b["Fecha"] - lectura_a["Fecha"]
-        ).total_seconds() / 86400
-        if dias_entre_lecturas > 0:
+        dias_entre = (lectura_b["Fecha"] - lectura_a["Fecha"]).total_seconds() / 86400
+        if dias_entre > 0:
             pendientes.append(
-                (float(lectura_b["Nivel_cm"]) - float(lectura_a["Nivel_cm"]))
-                / dias_entre_lecturas
+                (float(lectura_b["Nivel_cm"]) - float(lectura_a["Nivel_cm"])) / dias_entre
             )
     if not pendientes:
         return "Señal insuficiente", "No hay lecturas con horarios distintos para comparar."
@@ -441,74 +400,6 @@ def estimar_tendencia_nivel(
     )
 
 
-def aplicar_estilo_grafica(fig: go.Figure) -> None:
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#ffffff",
-        font=dict(family="Arial, sans-serif", color="#455d6b", size=12),
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            x=1,
-            y=1.02,
-            xanchor="right",
-            yanchor="bottom",
-            font=dict(size=11, color="#455d6b"),
-            bgcolor="rgba(255,255,255,0.75)",
-        ),
-    )
-    estilo_ejes = {
-        "gridcolor": "#e6ebee",
-        "gridwidth": 0.6,
-        "zeroline": False,
-        "showline": True,
-        "linecolor": "#aebbc2",
-        "linewidth": 0.8,
-        "ticks": "outside",
-        "tickcolor": "#aebbc2",
-        "tickwidth": 0.8,
-        "ticklen": 3,
-        "showticklabels": True,
-        "tickfont": dict(size=11, color="#455d6b"),
-        "automargin": True,
-    }
-    fig.update_xaxes(**estilo_ejes)
-    fig.update_yaxes(**estilo_ejes)
-
-
-def crear_grafica_pronostico_cuenca(horas: pd.DataFrame) -> go.Figure:
-    fig = go.Figure(
-        go.Scatter(
-            x=horas["FechaHora"],
-            y=horas["Precipitacion_mm"].cumsum(),
-            name="Lluvia acumulada (mm)",
-            mode="lines+markers",
-            line=dict(color="#167f94", width=1.2),
-            marker=dict(size=3),
-            fill="tozeroy",
-            fillcolor="rgba(22, 127, 148, 0.07)",
-            hovertemplate="%{y:.1f} mm<extra></extra>",
-        )
-    )
-    fig.update_layout(
-        height=300,
-        margin=dict(l=64, r=20, t=48, b=40),
-        hovermode="x unified",
-    )
-    fig.update_xaxes(
-        title_text="Hora local",
-        tickformat="%H:%M",
-        fixedrange=True,
-    )
-    fig.update_yaxes(
-        title_text="Precipitación media acumulada (mm)",
-        rangemode="tozero",
-        fixedrange=True,
-    )
-    aplicar_estilo_grafica(fig)
-    return fig
-
-
 def limpiar_niveles(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
@@ -516,10 +407,7 @@ def limpiar_niveles(df: pd.DataFrame) -> pd.DataFrame:
     df["Nivel_cm"] = df["Nivel_cm"].replace([float("inf"), float("-inf")], pd.NA)
     df = df.dropna(subset=["Fecha", "Nivel_cm"]).copy()
     df["Nivel_cm"] = df["Nivel_cm"].astype(float)
-    escala_x100 = (
-        df["Nivel_cm"].abs().gt(2000)
-        & df["Nivel_cm"].abs().le(200_000)
-    )
+    escala_x100 = df["Nivel_cm"].abs().gt(2000) & df["Nivel_cm"].abs().le(200_000)
     df.loc[escala_x100, "Nivel_cm"] /= 100
     return df[df["Nivel_cm"].between(0, 2000)].reset_index(drop=True)
 
@@ -566,9 +454,13 @@ def cargar_nivel_fews_calamar() -> pd.DataFrame:
     return datos.sort_values("Fecha").reset_index(drop=True)
 
 
-def calcular_umbrales(_df: pd.DataFrame) -> dict:
-    """Devuelve únicamente las cotas oficiales configuradas, en centímetros."""
-    oficiales = {"amarilla": UMBRAL_AMARILLA_CM, "naranja": UMBRAL_NARANJA_CM, "roja": UMBRAL_ROJA_CM}
+# ═══════════════════════════ UMBRALES ═══════════════════════════
+def calcular_umbrales() -> dict:
+    oficiales = {
+        "amarilla": UMBRAL_AMARILLA_CM,
+        "naranja": UMBRAL_NARANJA_CM,
+        "roja": UMBRAL_ROJA_CM,
+    }
     res, origen = {}, {}
     for k, v in oficiales.items():
         if v is not None:
@@ -606,12 +498,147 @@ def banner(estado: str) -> None:
         )
 
 
-def clasificar_estado_peces(nivel_cm: float, cambio_cm: float) -> tuple[str, str]:
-    if nivel_cm > 900:
-        return "scared", "asustados"
-    if cambio_cm < 0:
-        return "uncomfortable", "incómodos"
-    return "calm", "tranquilos"
+# ═══════════════════════════ GRÁFICAS ═══════════════════════════
+def aplicar_estilo_grafica(fig: go.Figure) -> None:
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#ffffff",
+        font=dict(family="Arial, sans-serif", color="#455d6b", size=12),
+        showlegend=True,
+        legend=dict(
+            orientation="h", x=1, y=1.02, xanchor="right", yanchor="bottom",
+            font=dict(size=11, color="#455d6b"),
+            bgcolor="rgba(255,255,255,0.75)",
+        ),
+    )
+    estilo_ejes = {
+        "gridcolor": "#e6ebee", "gridwidth": 0.6, "zeroline": False,
+        "showline": True, "linecolor": "#aebbc2", "linewidth": 0.8,
+        "ticks": "outside", "tickcolor": "#aebbc2", "tickwidth": 0.8,
+        "ticklen": 3, "showticklabels": True,
+        "tickfont": dict(size=11, color="#455d6b"), "automargin": True,
+    }
+    fig.update_xaxes(**estilo_ejes)
+    fig.update_yaxes(**estilo_ejes)
+
+
+def crear_grafica_pronostico_cuenca(horas: pd.DataFrame) -> go.Figure:
+    fig = go.Figure(
+        go.Scatter(
+            x=horas["FechaHora"],
+            y=horas["Precipitacion_mm"].cumsum(),
+            name="Lluvia acumulada (mm)",
+            mode="lines+markers",
+            line=dict(color="#167f94", width=1.2),
+            marker=dict(size=3),
+            fill="tozeroy",
+            fillcolor="rgba(22, 127, 148, 0.07)",
+            hovertemplate="%{y:.1f} mm<extra></extra>",
+        )
+    )
+    fig.update_layout(height=300, margin=dict(l=64, r=20, t=48, b=40), hovermode="x unified")
+    fig.update_xaxes(title_text="Hora local", tickformat="%H:%M", fixedrange=True)
+    fig.update_yaxes(title_text="Precipitación media acumulada (mm)", rangemode="tozero", fixedrange=True)
+    aplicar_estilo_grafica(fig)
+    return fig
+
+
+def crear_grafica_fews(datos_fews: pd.DataFrame) -> go.Figure:
+    fig = go.Figure(
+        go.Scatter(
+            x=datos_fews["Fecha"],
+            y=datos_fews["Nivel_cm"],
+            name="Nivel observado FEWS (cm)",
+            mode="lines+markers" if len(datos_fews) <= 2000 else "lines",
+            line=dict(color="#167f94", width=1.2),
+            marker=dict(size=3, color="#167f94"),
+            customdata=datos_fews["Fuente"],
+            hovertemplate=(
+                "<b>%{x|%d %b %Y %H:%M}</b><br>Nivel: <b>%{y:.1f} cm</b>"
+                "<br>%{customdata}<extra></extra>"
+            ),
+        )
+    )
+    fig.update_layout(
+        height=360, margin=dict(l=60, r=20, t=48, b=40),
+        hovermode="x", yaxis=dict(title="Nivel observado (cm)"),
+    )
+    aplicar_estilo_grafica(fig)
+    return fig
+
+
+def crear_grafica_historica(
+    datos_grafica: pd.DataFrame, umbrales: dict
+) -> go.Figure:
+    fig = go.Figure(go.Scatter(
+        x=datos_grafica["Fecha"], y=datos_grafica["Nivel_cm"],
+        name="Nivel observado (cm)",
+        mode="lines",
+        line=dict(color="#167f94", width=1.2),
+        customdata=datos_grafica[["FechaTxt", "Fuente"]],
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>Nivel: <b>%{y:.1f} cm</b>"
+            "<br>Fuente: %{customdata[1]}<extra></extra>"
+        ),
+    ))
+    estilos = {
+        "amarilla": ("#d4a017", "Amarilla"),
+        "naranja": ("#e8710a", "Naranja"),
+        "roja": ("#c62828", "Roja"),
+    }
+    y_vals = list(datos_grafica["Nivel_cm"])
+    for k, (color, nombre) in estilos.items():
+        val = umbrales["valores"][k]
+        if val is None:
+            continue
+        y_vals.append(val)
+        fig.add_hline(
+            y=val, line_dash="dot", line_color=color, line_width=1,
+            annotation_text=f"{nombre} {val:.0f} cm",
+            annotation_position="top left",
+            annotation_font=dict(color=color, size=11),
+        )
+    y_vals.append(float(NIVEL_REFERENCIA_CM))
+    fig.add_hline(
+        y=NIVEL_REFERENCIA_CM, line_dash="dash", line_color="#718a98", line_width=1,
+        annotation_text="Referencia · 950 cm", annotation_position="top left",
+        annotation_font=dict(color="#526b79", size=11),
+    )
+    rango = max(y_vals) - min(y_vals)
+    fig.update_layout(
+        height=390, margin=dict(l=60, r=20, t=48, b=40),
+        hovermode="x", dragmode=False, hoverlabel=dict(font_size=16),
+        xaxis=dict(
+            fixedrange=True,
+            tickformat="%Y" if (datos_grafica["Fecha"].max() - datos_grafica["Fecha"].min()).days > 365 * 3 else "%d %b",
+        ),
+        yaxis=dict(
+            fixedrange=True, title="Nivel (cm)",
+            range=[min(y_vals) - 0.08 * rango, max(y_vals) + 0.12 * rango],
+        ),
+    )
+    aplicar_estilo_grafica(fig)
+    return fig
+
+
+# ═══════════════════════════ VISUALIZACIÓN 3D (PECES) ═══════════════════════════
+def _persona_svg(
+    camisa: str, pantalon: str, piel: str = "#c68a63",
+    camina: bool = False, sentada: bool = False,
+) -> str:
+    cabeza = (
+        f'<circle cx="0" cy="-19" r="3.1" fill="{piel}"/>'
+        '<path d="M-3.2 -20.4Q0 -24.2 3.2 -20.4Z" fill="#2b2622"/>'
+    )
+    torso = f'<rect x="-3.4" y="-16" width="6.8" height="9.6" rx="2.2" fill="{camisa}"/>'
+    if sentada:
+        return cabeza + torso
+    clase = ' class="jn-pierna"' if camina else ""
+    piernas = (
+        f'<rect{clase} x="-3" y="-7" width="2.8" height="7" rx="1" fill="{pantalon}"/>'
+        f'<rect{clase} x=".2" y="-7" width="2.8" height="7" rx="1" fill="{pantalon}"/>'
+    )
+    return cabeza + torso + piernas
 
 
 def _ventana_svg(
@@ -630,26 +657,6 @@ def _ventana_svg(
         f'<path d="M{x + ancho / 2} {y}v{alto}M{x} {y + alto / 2}h{ancho}" '
         f'stroke="{marco}" stroke-width=".7"/>'
     )
-
-
-def _persona_svg(
-    camisa: str, pantalon: str, piel: str = "#c68a63",
-    camina: bool = False, sentada: bool = False,
-) -> str:
-    """Figura de unos 22 px de alto con los pies en (0, 0)."""
-    cabeza = (
-        f'<circle cx="0" cy="-19" r="3.1" fill="{piel}"/>'
-        '<path d="M-3.2 -20.4Q0 -24.2 3.2 -20.4Z" fill="#2b2622"/>'
-    )
-    torso = f'<rect x="-3.4" y="-16" width="6.8" height="9.6" rx="2.2" fill="{camisa}"/>'
-    if sentada:
-        return cabeza + torso
-    clase = ' class="jn-pierna"' if camina else ""
-    piernas = (
-        f'<rect{clase} x="-3" y="-7" width="2.8" height="7" rx="1" fill="{pantalon}"/>'
-        f'<rect{clase} x=".2" y="-7" width="2.8" height="7" rx="1" fill="{pantalon}"/>'
-    )
-    return cabeza + torso + piernas
 
 
 def _bote_svg(x: float, y_agua: float, tipo: str, retraso: float, duracion: float) -> str:
@@ -684,7 +691,6 @@ def _bote_svg(x: float, y_agua: float, tipo: str, retraso: float, duracion: floa
 
 
 def _ola_path(amplitud: float, periodo: float, ciclos: int, espesor: float = 16) -> str:
-    """Onda continua de 340 px de ciclo exacto: el desplazamiento de -340 px es un bucle sin saltos."""
     mitad = periodo / 2
     d = f"M0 0Q{mitad / 2:.2f} {-amplitud:.2f} {mitad:.2f} 0"
     d += "".join(f"T{mitad * (i + 2):.2f} 0" for i in range(ciclos * 2 - 1))
@@ -706,30 +712,27 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         color_nube, opacidad_nube = "#d6dee0", (".92", ".78")
     elif ambiente == "nublado":
         cielo = ("#5a8298", "#9eb8c3", "#d0dce0")
-        color_nube, opacidad_nube = "#f4f6f5", (".94", ".8")
+        color_nube, opacidad_nube = ("#f4f6f5", (".94", ".8"))
     else:
         cielo = ("#17527c", "#6cb0d3", "#bfe0ee")
         color_nube, opacidad_nube = "#ffffff", (".85", ".7")
 
+    astro = ""
     if noche:
-        astro = (
-            ""
-            if ambiente in ("lluvia", "tormenta")
-            else (
+        if ambiente not in ("lluvia", "tormenta"):
+            astro = (
                 '<g fill="#f3e7ad"><circle cx="277" cy="27" r="1.1"/>'
                 '<circle cx="305" cy="53" r=".9"/><circle cx="248" cy="65" r=".8"/>'
                 '<circle cx="326" cy="32" r="1.2"/><circle cx="222" cy="37" r=".7"/></g>'
                 '<path d="M288 27a10 10 0 1 0 13 13a8 8 0 1 1-13-13Z" fill="#f3e7ad"/>'
             )
-        )
     elif ambiente == "despejado":
         astro = (
             '<g fill="#ffe38a" stroke="#fff1bc" stroke-width="1">'
             '<circle cx="286" cy="52" r="10"/><path d="M286 34v-6m0 48v-6m18-18h6m-48 0h6'
             'm31-13 4-4m-34 34 4-4m0-26-4-4m34 34-4-4"/></g>'
         )
-    else:
-        astro = ""
+
     aves = [] if noche or ambiente in ("lluvia", "tormenta") else [
         '<g class="jn-ave" style="--dur:30s;--delay:-8s"><g transform="translate(0 84)">'
         '<path d="M0 0q3 -3.2 6 0q3 -3.2 6 0" fill="none" stroke="#173a52" stroke-width="1.2" '
@@ -747,7 +750,6 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         if noche else ""
     )
 
-    # ── Talud: grava, hierba y surcos de erosión
     colores_grava = ("#8f7b5a", "#d3bf96", "#a08d6b", "#6f5f46")
     grava = []
     for _ in range(85):
@@ -761,7 +763,6 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         hx, hy = rng.uniform(4, 336), rng.uniform(246, 354)
         hierba += f"M{hx:.1f} {hy:.1f}l-2.2 -6.5M{hx:.1f} {hy:.1f}l.2 -7.5M{hx:.1f} {hy:.1f}l2.4 -6"
 
-    # ── Enrocado de piedra al pie del talud
     tonos_piedra = ("#7e8782", "#919a95", "#6d7671", "#a0a79f", "#868f86")
     piedras = []
     y = 364.0
@@ -778,7 +779,6 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
             x += ancho_bloque
         y += alto_fila
 
-    # ── Escalera que baja de la muralla al talud (vista de perfil)
     peldanos, dx, dy, x0, y0 = 10, 5.6, 11.2, 172.0, 190.0
     borde = [(x0, y0)]
     for i in range(peldanos):
@@ -786,18 +786,13 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         borde.append((x0 + (i + 1) * dx, y0 + (i + 1) * dy))
     inferior = [(px, py + 19) for px, py in reversed(borde)]
     puntos_escalera = " ".join(f"{px:.1f},{py:.1f}" for px, py in borde + inferior)
-    postes = "".join(
-        f"M{x0 + (i + 1) * dx:.1f} {y0 + i * dy:.1f}v-15" for i in range(0, peldanos, 2)
-    )
+    postes = "".join(f"M{x0 + (i + 1) * dx:.1f} {y0 + i * dy:.1f}v-15" for i in range(0, peldanos, 2))
     xf, yf = x0 + peldanos * dx, y0 + peldanos * dy
 
-    # ── Ciudad
     ventanas_blancas = "".join(
         _ventana_svg(x, 138, 14, 20, marco="#cfe0ea", vidrio="#35617b") for x in (166, 196, 226, 256, 286)
     )
-    merlones = "".join(
-        f'<rect x="{x}" y="105" width="9" height="10" fill="#c3d8e4"/>' for x in range(156, 336, 15)
-    )
+    merlones = "".join(f'<rect x="{x}" y="105" width="9" height="10" fill="#c3d8e4"/>' for x in range(156, 336, 15))
     ventanas_amarillo = "".join(
         _ventana_svg(x, 106, 13, 24, marco="#2b5a79", vidrio="#3d7fa5")
         + f'<rect x="{x - 4}" y="106" width="3" height="24" fill="#3b6f95"/>'
@@ -828,7 +823,6 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         '<linearGradient id="jn-lecho" x1="0" y1="0" x2="0" y2="1">'
         '<stop offset="0" stop-color="#8c7658"/><stop offset="1" stop-color="#4c3f31"/></linearGradient>'
         '</defs>',
-        # Cielo, título, nubes y aves
         '<rect width="340" height="200" fill="url(#jn-cielo)"/>',
         astro,
         '<text x="20" y="27" font-size="12" font-weight="700" letter-spacing="2" fill="#ffffff" '
@@ -842,7 +836,6 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         '<g class="jn-nube" style="--dur:120s;--delay:-80s;--reposo:250px"><g transform="translate(0 94)">'
         f'<ellipse cx="0" cy="0" rx="19" ry="5" fill="{color_nube}" opacity="{opacidad_nube[1]}"/>'
         f'<ellipse cx="8" cy="-4" rx="11" ry="5.5" fill="{color_nube}" opacity="{opacidad_nube[1]}"/></g></g>',
-        # Ciudad: edificio trasero, edificio blanco almenado, edificio amarillo y edificio verde
         '<rect x="146" y="64" width="58" height="124" fill="#7c6a63"/>'
         '<rect x="143" y="59" width="64" height="7" fill="#cdc4b5"/>'
         '<path d="M152 70v118M168 70v118M184 70v118M198 70v118" stroke="#000" stroke-opacity=".08" stroke-width="3"/>'
@@ -872,12 +865,10 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         f'<path d="{postes_verde}" stroke="#f2f6ef" stroke-width="1.5"/>'
         f'{ventanas_verde}'
         '<rect x="0" y="174" width="68" height="12" fill="#6aae8d"/>',
-        # Puestos sobre la muralla: toldo naranja y lona azul
         '<path d="M196 186L205 169H258L267 186Z" fill="#d4673f"/>'
         '<path d="M214 169L211 186M226 169L225 186M238 169L238 186M250 169L252 186" '
         'stroke="#f1d3c3" stroke-width="1.6" opacity=".7"/>'
         '<path d="M82 186L86 175H112L116 186Z" fill="#3b6fb0"/>',
-        # Muralla (10 m)
         '<rect x="0" y="186" width="340" height="4" fill="#f1ebdc"/>'
         '<rect x="0" y="190" width="340" height="46" fill="url(#jn-muro)"/>'
         '<path d="M42 190v46M84 190v46M126 190v46M168 190v46M210 190v46M252 190v46M294 190v46" '
@@ -888,7 +879,6 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         '<rect x="58" y="210" width="46" height="10" rx="1" fill="#2d6b9b" opacity=".85"/>'
         '<path d="M110 212h30M110 217h22" stroke="#9c9786" stroke-width="2"/>'
         '<rect x="0" y="236" width="340" height="5" fill="#a89e88"/>',
-        # Talud
         '<rect x="0" y="241" width="340" height="123" fill="url(#jn-talud)"/>'
         '<path d="M60 242q4 30 -2 60q-4 30 4 60M150 242q-4 34 2 66q4 28 -2 54M262 242q5 28 -1 58q-5 32 3 64" '
         'fill="none" stroke="#4f3d22" stroke-opacity=".12" stroke-width="4" stroke-linecap="round"/>'
@@ -900,7 +890,6 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         f'<path d="{hierba}" stroke="#4d8a3a" stroke-width="1.1" stroke-linecap="round" fill="none"/>',
         '<text x="46" y="288" font-size="9" font-weight="700" letter-spacing="2" fill="#fff8e6" '
         'opacity=".9" font-family="Arial, sans-serif">TALUD</text>',
-        # Enrocado y lecho del río
         '<rect x="0" y="362" width="340" height="110" fill="#59625d"/>',
         "".join(piedras),
         '<rect x="0" y="360" width="340" height="4" fill="#6d6a5b"/>'
@@ -909,17 +898,14 @@ def _escena_fija_svg(ambiente: str, noche: bool) -> str:
         '<circle cx="52" cy="482" r="2.4" fill="#b19a78" opacity=".7"/>'
         '<circle cx="171" cy="488" r="3" fill="#a08a69" opacity=".7"/>'
         '<circle cx="268" cy="480" r="2.2" fill="#b19a78" opacity=".7"/>',
-        # Escalera con baranda
         f'<polygon points="{puntos_escalera}" fill="#d6cfba" stroke="#7a7260" stroke-width=".9" stroke-linejoin="round"/>'
         f'<path d="M{x0:.1f} {y0 - 15:.1f}L{xf:.1f} {yf - 15:.1f}{postes}" stroke="#2f414c" '
         'stroke-width="1.5" fill="none" stroke-linecap="round"/>',
-        # Aves
         "".join(aves),
     ])
 
 
 def _compactar_html(html: str) -> str:
-    """Quita sangrías y líneas vacías para que Markdown trate todo como un solo bloque HTML."""
     return "\n".join(linea.strip() for linea in html.splitlines() if linea.strip())
 
 
@@ -941,6 +927,7 @@ def _tarullas_svg(y_superficie: float) -> str:
     return "".join(plantas)
 
 
+# ── CSS y JS del medidor (extraídos para claridad) ──
 _MEDIDOR_CSS = """
 html, body {margin:0; padding:0; background:transparent; font-family:Arial,sans-serif;}
 .gauge-feed-wrap {width:min(100%, 340px); margin:0 auto; color:#365462;}
@@ -1402,8 +1389,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
         const actual = pez.group.rotation.z;
         pez.group.rotation.z += Math.atan2(
           Math.sin(cabeceo - actual), Math.cos(cabeceo - actual)
-        )
-          * Math.min(1, delta * 2.2);
+        ) * Math.min(1, delta * 2.2);
       }
 
       const screenX = pez.group.position.x + 170;
@@ -1477,14 +1463,13 @@ def crear_medidor_html(
     noche: bool,
     viento_kmh: float,
 ) -> str:
-    """Escena animada de Calamar: el nivel (0–10 m) sube por el talud hasta la muralla."""
     y_cero, y_muralla, y_fondo = 452.0, 186.0, 482.0
     px_por_cm = (y_cero - y_muralla) / NIVEL_MURALLA_CM
     posicion = lambda cm: y_cero - cm * px_por_cm
     y_s = posicion(max(0.0, min(nivel_cm, NIVEL_MURALLA_CM * 1.12)))
     sobre_muralla = nivel_cm > NIVEL_MURALLA_CM
 
-    # ── Personas: solo se dibujan si el agua no las cubre
+    # ── Personas
     gente = []
     if not noche and y_s > 192:
         gente.append(
@@ -1504,7 +1489,7 @@ def crear_medidor_html(
         )
     )
 
-    # ── Perfiles de los peces 3D
+    # ── Peces
     perfiles_peces = [
         {"especie": "bocachico", "largo": 43, "alto": 19, "profundidad": 68, "velocidad": 1.0, "fase": 0.15, "rayas": [-0.45, -0.15, 0.15, 0.42]},
         {"especie": "bagre", "largo": 47, "alto": 18, "profundidad": 51, "velocidad": 0.88, "fase": 0.55, "rayas": []},
@@ -1533,6 +1518,7 @@ def crear_medidor_html(
                 f'stroke="#dcf6fa" stroke-width="1" style="--sube:{sube:.0f}px;--dur:{duracion}s;--delay:-{retraso}s"/>'
             )
 
+    # ── Lluvia
     gotas_lluvia = []
     relampago = ""
     if ambiente in ("lluvia", "tormenta"):
@@ -1552,7 +1538,7 @@ def crear_medidor_html(
             )
     lluvia_svg = f'<g aria-hidden="true">{"".join(gotas_lluvia)}{relampago}</g>'
 
-    # ── Agua: cuerpo translúcido, destellos y dos olas
+    # ── Agua
     colores_agua = {
         "despejado": ("#2aa3b4", "#127a91", "#0c4057"),
         "nublado": ("#3793a0", "#176d80", "#103e51"),
@@ -1593,7 +1579,7 @@ def crear_medidor_html(
         'stroke="#ffffff" stroke-opacity=".75" stroke-width="1.1"/></g></g>'
     )
 
-    # ── Regla de nivel (izquierda) y etiquetas (derecha)
+    # ── Regla de nivel
     marcas = []
     for metro in range(0, 11):
         y = posicion(metro * 100)
@@ -1613,12 +1599,14 @@ def crear_medidor_html(
         f'<polygon points="39,{y_s:.1f} 47,{y_s - 4.5:.1f} 47,{y_s + 4.5:.1f}" fill="#ffffff" stroke="#167f94"/>'
     )
 
+    # ── Etiquetas
     lineas = [
         f'<path d="M40 {posicion(NIVEL_REFERENCIA_CM):.1f}H340" stroke="#0f2c3b" stroke-opacity=".6" '
         'stroke-dasharray="5 4" stroke-width="1.2"/>'
     ]
     etiquetas = [
-        {"y": posicion(NIVEL_MURALLA_CM), "texto": "MURALLA SUPERADA" if sobre_muralla else "MURALLA 10 m",
+        {"y": posicion(NIVEL_MURALLA_CM),
+         "texto": "MURALLA SUPERADA" if sobre_muralla else "MURALLA 10 m",
          "fondo": "#b5432f" if sobre_muralla else "#4b4130", "tinta": "#ffffff", "prioridad": 0},
         {"y": posicion(NIVEL_REFERENCIA_CM), "texto": f"Ref. {NIVEL_REFERENCIA_CM} cm",
          "fondo": "#0f2c3b", "tinta": "#e3f0f5", "prioridad": 1},
@@ -1638,7 +1626,6 @@ def crear_medidor_html(
              "tinta": "#102b3b", "prioridad": 1}
         )
     etiquetas.sort(key=lambda e: (e["y"], e["prioridad"]))
-    # Separa las etiquetas para que no se encimen: primero hacia abajo, luego hacia arriba si hace falta.
     previo = 14.0 - 18
     for e in etiquetas:
         previo = e["pos"] = max(e["y"], previo + 18)
@@ -1691,113 +1678,25 @@ def crear_medidor_html(
     return _compactar_html(html)
 
 
-# ═══════════════════════════ CARGA ═══════════════════════════
-icon_data = base64.b64encode(JUAN_ICON_PATH.read_bytes()).decode("ascii")
-cover_data = base64.b64encode(JUAN_COVER_PATH.read_bytes()).decode("ascii")
-st.markdown(
-    f"""
-    <section class="profile-card" aria-label="Perfil del proyecto JUAN">
-      <div class="profile-cover" style="--cover-image: url('data:image/webp;base64,{cover_data}')"></div>
-      <img class="profile-avatar" src="data:image/png;base64,{icon_data}" alt="Imagen de JUAN">
-      <div class="profile-content">
-        <h1>JUAN</h1>
-        <h2>OBSERVATORIO MONITOREO DEL NIVEL DE RIO MAGDALENA EN CALAMAR BOLIVAR</h2>
-        <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel observado</p>
-      </div>
-    </section>
-    """,
-    unsafe_allow_html=True,
-)
-
-if not CSV_PATH.exists():
-    st.error("Todavía no hay datos. Ejecute el workflow «Actualizar datos nivel río Calamar» en GitHub Actions.")
-    st.stop()
-
-df = cargar_datos(str(CSV_PATH), CSV_PATH.stat().st_mtime)
-datos_fews: pd.DataFrame | None = None
-error_fews: Exception | None = None
-try:
-    with st.spinner("Consultando la serie de nivel de FEWS IDEAM..."):
-        datos_fews = cargar_nivel_fews_calamar()
-except (
-    requests.RequestException,
-    pd.errors.ParserError,
-    pd.errors.EmptyDataError,
-    UnicodeError,
-    ValueError,
-) as exc:
-    error_fews = exc
-if datos_fews is not None:
-    df = pd.concat([df, datos_fews], ignore_index=True, sort=False)
-    df = (
-        df.drop_duplicates(subset=["Fecha"], keep="last")
-        .sort_values("Fecha")
-        .reset_index(drop=True)
-    )
-if len(df) < 2:
-    st.warning("Hay muy pocos datos para mostrar el tablero.")
-    st.stop()
-
-ultimo = df.iloc[-1]
-nivel_cm = float(ultimo["Nivel_cm"])
-fecha_ult = ultimo["Fecha"]
-ts_ult = ultimo["Ultima_lectura"] if pd.notna(ultimo["Ultima_lectura"]) else fecha_ult
-
-# Variación vs. día anterior (si falta ese día, se usa el último dato disponible previo).
-previo = df.iloc[-2]
-dias_diff = (fecha_ult - previo["Fecha"]).days
-delta_cm = nivel_cm - float(previo["Nivel_cm"])
-ref_txt = "el día anterior" if dias_diff == 1 else f"el {fecha_es(previo['Fecha'])}"
-estado_peces, estado_peces_texto = clasificar_estado_peces(nivel_cm, delta_cm)
-
-edad_dias = (pd.Timestamp.now().normalize() - fecha_ult.normalize()).days
-umbrales = calcular_umbrales(df)
-
-tiempo_actual: dict | None = None
-error_meteorologia: Exception | None = None
-try:
-    with st.spinner("Actualizando el ambiente del río..."):
-        tiempo_actual = cargar_meteorologia()
-except (requests.RequestException, ValueError) as exc:
-    error_meteorologia = exc
-
-codigo_clima = int(tiempo_actual["weather_code"]) if tiempo_actual is not None else None
-hora_local = (
-    pd.Timestamp(tiempo_actual["time"])
-    if tiempo_actual is not None
-    else pd.Timestamp.now(tz=METEO_ZONA_HORARIA).tz_localize(None)
-)
-noche = hora_local.hour < 6 or hora_local.hour >= 18
-ambiente = tipo_ambiente(codigo_clima)
-clima_texto = (
-    describir_tiempo(codigo_clima)
-    if codigo_clima is not None
-    else "clima no disponible"
-)
-viento_kmh = float(tiempo_actual["wind_speed_10m"]) if tiempo_actual is not None else 0.0
-
-col_medidor, col_lectura = st.columns([0.9, 1.1], gap="large")
-with col_medidor:
-    components.html(
-        crear_medidor_html(
-            nivel_cm,
-            umbrales,
-            estado_peces,
-            estado_peces_texto,
-            ambiente,
-            clima_texto,
-            noche,
-            viento_kmh,
-        ),
-        height=550,
-        scrolling=False,
+# ═══════════════════════════ UI COMPONENTES ═══════════════════════════
+def mostrar_encabezado(icon_data: str, cover_data: str) -> None:
+    st.markdown(
+        f"""
+        <section class="profile-card" aria-label="Perfil del proyecto JUAN">
+          <div class="profile-cover" style="--cover-image: url('data:image/webp;base64,{cover_data}')"></div>
+          <img class="profile-avatar" src="data:image/png;base64,{icon_data}" alt="Imagen de JUAN">
+          <div class="profile-content">
+            <h1>JUAN</h1>
+            <h2>OBSERVATORIO MONITOREO DEL NIVEL DE RIO MAGDALENA EN CALAMAR BOLIVAR</h2>
+            <p>{ESTACION_NOMBRE} · Estación IDEAM {ESTACION_CODIGO} · Nivel observado</p>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
     )
 
-with col_lectura:
-    fecha_texto = fecha_es(ts_ult, con_hora=pd.notna(ultimo["Ultima_lectura"]))
-    cambio_texto = "Sin variación" if delta_cm == 0 else (
-        f"{'Subió' if delta_cm > 0 else 'Bajó'} {abs(delta_cm):.1f} cm {ref_txt}"
-    )
+
+def mostrar_tarjeta_lectura(nivel_cm: float, fecha_texto: str, cambio_texto: str, fuente: str) -> None:
     st.markdown(
         f"""
         <div class="reading-card">
@@ -1808,149 +1707,257 @@ with col_lectura:
           <div class="reading-detail">
             <strong>Fecha de lectura</strong><br>{fecha_texto}<br>
             <strong>Variación</strong><br>{cambio_texto}<br>
-            <strong>Fuente</strong><br>{ultimo["Fuente"]}
+            <strong>Fuente</strong><br>{fuente}
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    banner(evaluar(nivel_cm, umbrales))
 
-if edad_dias > DIAS_MAX_SIN_DATOS:
-    st.warning(
-        f"El último dato publicado por el IDEAM tiene {edad_dias} días; "
-        "puede no representar el nivel actual del río."
+
+def mostrar_clima_actual(
+    tiempo_actual: dict | None, error_meteorologia: Exception | None, noche: bool
+) -> None:
+    """Muestra una tarjeta compacta con el estado del clima y su icono."""
+    if tiempo_actual is None:
+        icono = "🌡️"
+        descripcion = "Clima no disponible"
+        meta = "Sin conexión al servicio meteorológico"
+    else:
+        codigo = int(tiempo_actual["weather_code"])
+        icono = icono_tiempo(codigo, noche)
+        descripcion = describir_tiempo(codigo)
+        meta = (
+            f"{float(tiempo_actual['temperature_2m']):.1f} °C · "
+            f"humedad {int(tiempo_actual['relative_humidity_2m'])}% · "
+            f"viento {float(tiempo_actual['wind_speed_10m']):.0f} km/h"
+        )
+
+    st.markdown(
+        f"""
+        <div class="weather-card" role="status" aria-label="Clima actual en Calamar">
+          <div class="weather-icon" aria-hidden="true">{icono}</div>
+          <div class="weather-body">
+            <div class="weather-label">Clima en Calamar ahora</div>
+            <div class="weather-desc">{descripcion}</div>
+            <div class="weather-meta">{meta}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-# ═════════════════════════════ VISOR FEWS ═════════════════════════════
-st.subheader("Visor FEWS IDEAM · Calamar")
-st.caption(
-    "Ubicación de la estación y serie consolidada de nivel observado publicada por FEWS IDEAM. "
-    "Las lecturas de FEWS son preliminares, pueden ser corregidas y no son una medición en tiempo real."
-)
-mapa_estacion = pd.DataFrame(
-    [
-        {
+
+# ═══════════════════════════ CARGA DE DATOS Y COMBINACIÓN ═══════════════════════════
+def cargar_datos_combinados() -> tuple[pd.DataFrame, pd.DataFrame | None, Exception | None]:
+    df = cargar_datos(str(CSV_PATH), CSV_PATH.stat().st_mtime)
+    datos_fews: pd.DataFrame | None = None
+    error_fews: Exception | None = None
+    try:
+        with st.spinner("Consultando la serie de nivel de FEWS IDEAM..."):
+            datos_fews = cargar_nivel_fews_calamar()
+    except (
+        requests.RequestException,
+        pd.errors.ParserError,
+        pd.errors.EmptyDataError,
+        UnicodeError,
+        ValueError,
+    ) as exc:
+        error_fews = exc
+    if datos_fews is not None:
+        df = pd.concat([df, datos_fews], ignore_index=True, sort=False)
+        df = (
+            df.drop_duplicates(subset=["Fecha"], keep="last")
+            .sort_values("Fecha")
+            .reset_index(drop=True)
+        )
+    return df, datos_fews, error_fews
+
+
+def calcular_metadatos_ultima_lectura(df: pd.DataFrame) -> dict:
+    ultimo = df.iloc[-1]
+    nivel_cm = float(ultimo["Nivel_cm"])
+    fecha_ult = ultimo["Fecha"]
+    ts_ult = ultimo["Ultima_lectura"] if pd.notna(ultimo["Ultima_lectura"]) else fecha_ult
+
+    previo = df.iloc[-2]
+    dias_diff = (fecha_ult - previo["Fecha"]).days
+    delta_cm = nivel_cm - float(previo["Nivel_cm"])
+    ref_txt = "el día anterior" if dias_diff == 1 else f"el {fecha_es(previo['Fecha'])}"
+    cambio_texto = (
+        "Sin variación" if delta_cm == 0
+        else f"{'Subió' if delta_cm > 0 else 'Bajó'} {abs(delta_cm):.1f} cm {ref_txt}"
+    )
+
+    edad_dias = (pd.Timestamp.now().normalize() - fecha_ult.normalize()).days
+    estado_peces, estado_peces_texto = clasificar_estado_peces(nivel_cm, delta_cm)
+
+    return {
+        "nivel_cm": nivel_cm,
+        "fecha_ult": fecha_ult,
+        "ts_ult": ts_ult,
+        "delta_cm": delta_cm,
+        "cambio_texto": cambio_texto,
+        "edad_dias": edad_dias,
+        "fuente": str(ultimo["Fuente"]),
+        "estado_peces": estado_peces,
+        "estado_peces_texto": estado_peces_texto,
+    }
+
+
+def clasificar_estado_peces(nivel_cm: float, cambio_cm: float) -> tuple[str, str]:
+    if nivel_cm > 900:
+        return "scared", "asustados"
+    if cambio_cm < 0:
+        return "uncomfortable", "incómodos"
+    return "calm", "tranquilos"
+
+
+# ═══════════════════════════ SECCIONES DE LA UI ═══════════════════════════
+def seccion_medidor_y_lectura(
+    nivel_cm: float,
+    umbrales: dict,
+    estado_peces: str,
+    estado_peces_texto: str,
+    ambiente: str,
+    clima_texto: str,
+    noche: bool,
+    viento_kmh: float,
+    meta_lectura: dict,
+) -> None:
+    col_medidor, col_lectura = st.columns([0.9, 1.1], gap="large")
+    with col_medidor:
+        components.html(
+            crear_medidor_html(
+                nivel_cm, umbrales, estado_peces, estado_peces_texto,
+                ambiente, clima_texto, noche, viento_kmh,
+            ),
+            height=550,
+            scrolling=False,
+        )
+        # Clima debajo del medidor (con icono)
+        mostrar_clima_actual(
+            st.session_state.get("tiempo_actual"),
+            st.session_state.get("error_meteorologia"),
+            noche,
+        )
+
+    with col_lectura:
+        fecha_texto = fecha_es(
+            meta_lectura["ts_ult"],
+            con_hora=pd.notna(meta_lectura["ts_ult"]),
+        )
+        mostrar_tarjeta_lectura(
+            nivel_cm,
+            fecha_texto,
+            meta_lectura["cambio_texto"],
+            meta_lectura["fuente"],
+        )
+        banner(evaluar(nivel_cm, umbrales))
+
+
+def seccion_visor_fews(
+    datos_fews: pd.DataFrame | None,
+    error_fews: Exception | None,
+    clima_texto: str,
+) -> None:
+    st.subheader("Visor FEWS IDEAM · Calamar")
+    st.caption(
+        "Ubicación de la estación y serie consolidada de nivel observado publicada por FEWS IDEAM. "
+        "Las lecturas de FEWS son preliminares, pueden ser corregidas y no son una medición en tiempo real."
+    )
+    mapa_estacion = pd.DataFrame(
+        [{
             "lat": ESTACION_LATITUD,
             "lon": ESTACION_LONGITUD,
             "Estación": f"CALAMAR [{ESTACION_CODIGO}]",
             "Altitud (m s. n. m.)": ESTACION_ALTITUD_MSNM,
-        }
-    ]
-)
-boton_actualizar, enlace_fews = st.columns(2)
-if boton_actualizar.button("Actualizar ahora", key="consultar_fews"):
-    cargar_nivel_fews_calamar.clear()
-    st.rerun()
-enlace_fews.link_button("Abrir visor FEWS nacional", FEWS_VISOR_URL, width="stretch")
-
-if error_fews is not None:
-    st.caption("No se pudo consultar FEWS; mostrando el último dato guardado.")
-
-mapa_col, nivel_col = st.columns([1.2, 0.8], gap="large")
-with mapa_col:
-    st.caption(
-        f"Estación {ESTACION_NOMBRE} · Código IDEAM {ESTACION_CODIGO} · "
-        f"{ESTACION_LATITUD:.6f}, {ESTACION_LONGITUD:.6f} · "
-        f"{ESTACION_ALTITUD_MSNM} m s. n. m."
+        }]
     )
+    boton_actualizar, enlace_fews = st.columns(2)
+    if boton_actualizar.button("Actualizar ahora", key="consultar_fews"):
+        cargar_nivel_fews_calamar.clear()
+        st.rerun()
+    enlace_fews.link_button("Abrir visor FEWS nacional", FEWS_VISOR_URL, width="stretch")
 
-    st.map(
-        mapa_estacion,
-        latitude="lat",
-        longitude="lon",
-        color="#167f94",
-        size=120,
-        zoom=14,
-        height=420,
-    )
+    if error_fews is not None:
+        st.caption("No se pudo consultar FEWS; mostrando el último dato guardado.")
 
-    st.metric(
-        "Estado del clima en Calamar",
-        clima_texto
-    )
-
-with nivel_col:
-    if datos_fews is not None:
-        lectura_fews = datos_fews.iloc[-1]
-        st.metric("Último nivel observado FEWS", f"{lectura_fews['Nivel_cm']:.1f} cm")
-        st.caption(f"Fecha de lectura: {fecha_es(lectura_fews['Fecha'], con_hora=True)}")
+    mapa_col, nivel_col = st.columns([1.2, 0.8], gap="large")
+    with mapa_col:
         st.caption(
-            "Consulta FEWS: "
-            f"{fecha_es(datos_fews['Consultado_en'].iloc[0], con_hora=True)}"
+            f"Estación {ESTACION_NOMBRE} · Código IDEAM {ESTACION_CODIGO} · "
+            f"{ESTACION_LATITUD:.6f}, {ESTACION_LONGITUD:.6f} · "
+            f"{ESTACION_ALTITUD_MSNM} m s. n. m."
         )
-        st.caption("Serie consolidada · unidad original: metros, convertida a centímetros.")
-    st.markdown(
-        "[Abrir ubicación en OpenStreetMap]"
-        f"(https://www.openstreetmap.org/?mlat={ESTACION_LATITUD}&mlon={ESTACION_LONGITUD}"
-        f"#map=15/{ESTACION_LATITUD}/{ESTACION_LONGITUD}) · "
-        "[Catálogo Nacional de Estaciones del IDEAM]"
-        "(https://dhime.ideam.gov.co/server/rest/services/CNE/Estaciones/MapServer/0)"
-    )
-
-if datos_fews is not None:
-    st.caption(
-        f"{len(datos_fews):,} registros FEWS · "
-        f"{fecha_es(datos_fews['Fecha'].iloc[0])} – "
-        f"{fecha_es(datos_fews['Fecha'].iloc[-1])}"
-    )
-    fig_fews = go.Figure(
-        go.Scatter(
-            x=datos_fews["Fecha"],
-            y=datos_fews["Nivel_cm"],
-            name="Nivel observado FEWS (cm)",
-            mode="lines+markers" if len(datos_fews) <= 2000 else "lines",
-            line=dict(color="#167f94", width=1.2),
-            marker=dict(size=3, color="#167f94"),
-            customdata=datos_fews["Fuente"],
-            hovertemplate=(
-                "<b>%{x|%d %b %Y %H:%M}</b><br>Nivel: <b>%{y:.1f} cm</b>"
-                "<br>%{customdata}<extra></extra>"
-            ),
+        st.map(
+            mapa_estacion, latitude="lat", longitude="lon",
+            color="#167f94", size=120, zoom=14, height=420,
         )
-    )
-    fig_fews.update_layout(
-        height=360,
-        margin=dict(l=60, r=20, t=48, b=40),
-        hovermode="x",
-        yaxis=dict(title="Nivel observado (cm)"),
-    )
-    aplicar_estilo_grafica(fig_fews)
-    st.plotly_chart(
-        fig_fews,
-        width="stretch",
-        config={"displayModeBar": False},
-    )
-    st.caption(
-        f"Fuente: [FEWS IDEAM]({FEWS_VISOR_URL}). "
-        "La consulta se conserva en caché durante 5 minutos."
-    )
+        st.metric("Estado del clima en Calamar", clima_texto)
 
-# ═══════════════════════ METEOROLOGÍA Y TENDENCIA ═══════════════════════
-st.subheader("Lluvia prevista y tendencia observada del río")
-st.caption(
-    "La lluvia se calcula para toda el área hidrográfica Magdalena-Cauca: promedio espacial "
-    "ponderado por el área de sus 105 subzonas IDEAM, acumulado para las próximas 24 horas."
-)
-try:
-    with st.spinner("Consultando condiciones meteorológicas y pronóstico..."):
-        if error_meteorologia is not None:
-            raise error_meteorologia
-        if tiempo_actual is None:
-            raise ValueError("No hay datos meteorológicos actuales disponibles.")
-        subzonas_cuenca = cargar_subzonas_cuenca()
-        pronostico_horario = cargar_pronostico_cuenca(tiempo_actual["time"])
-except (requests.RequestException, ValueError) as exc:
-    st.error(f"No se pudo actualizar el pronóstico meteorológico local o de la cuenca: {exc}")
+    with nivel_col:
+        if datos_fews is not None:
+            lectura_fews = datos_fews.iloc[-1]
+            st.metric("Último nivel observado FEWS", f"{lectura_fews['Nivel_cm']:.1f} cm")
+            st.caption(f"Fecha de lectura: {fecha_es(lectura_fews['Fecha'], con_hora=True)}")
+            st.caption(
+                "Consulta FEWS: "
+                f"{fecha_es(datos_fews['Consultado_en'].iloc[0], con_hora=True)}"
+            )
+            st.caption("Serie consolidada · unidad original: metros, convertida a centímetros.")
+        st.markdown(
+            "[Abrir ubicación en OpenStreetMap]"
+            f"(https://www.openstreetmap.org/?mlat={ESTACION_LATITUD}&mlon={ESTACION_LONGITUD}"
+            f"#map=15/{ESTACION_LATITUD}/{ESTACION_LONGITUD}) · "
+            "[Catálogo Nacional de Estaciones del IDEAM]"
+            "(https://dhime.ideam.gov.co/server/rest/services/CNE/Estaciones/MapServer/0)"
+        )
+
+    if datos_fews is not None:
+        st.caption(
+            f"{len(datos_fews):,} registros FEWS · "
+            f"{fecha_es(datos_fews['Fecha'].iloc[0])} – "
+            f"{fecha_es(datos_fews['Fecha'].iloc[-1])}"
+        )
+        st.plotly_chart(
+            crear_grafica_fews(datos_fews),
+            width="stretch",
+            config={"displayModeBar": False},
+        )
+        st.caption(
+            f"Fuente: [FEWS IDEAM]({FEWS_VISOR_URL}). "
+            "La consulta se conserva en caché durante 5 minutos."
+        )
+
+
+def seccion_lluvia_y_tendencia(
+    df: pd.DataFrame, tiempo_actual: dict | None, error_meteorologia: Exception | None
+) -> None:
+    st.subheader("Lluvia prevista y tendencia observada del río")
     st.caption(
-        "La lluvia prevista no está disponible. La dirección observada del río se calcula "
-        "independientemente, a partir de las lecturas recientes."
+        "La lluvia se calcula para toda el área hidrográfica Magdalena-Cauca: promedio espacial "
+        "ponderado por el área de sus 105 subzonas IDEAM, acumulado para las próximas 24 horas."
     )
-    tendencia, motivo_tendencia = estimar_tendencia_nivel(df)
-    st.metric("Dirección observada · 3 días", tendencia)
-    st.caption(motivo_tendencia)
-else:
-    assert tiempo_actual is not None
+    try:
+        with st.spinner("Consultando condiciones meteorológicas y pronóstico..."):
+            if error_meteorologia is not None:
+                raise error_meteorologia
+            if tiempo_actual is None:
+                raise ValueError("No hay datos meteorológicos actuales disponibles.")
+            subzonas_cuenca = cargar_subzonas_cuenca()
+            pronostico_horario = cargar_pronostico_cuenca(tiempo_actual["time"])
+    except (requests.RequestException, ValueError) as exc:
+        st.error(f"No se pudo actualizar el pronóstico meteorológico local o de la cuenca: {exc}")
+        st.caption(
+            "La lluvia prevista no está disponible. La dirección observada del río se calcula "
+            "independientemente, a partir de las lecturas recientes."
+        )
+        tendencia, motivo_tendencia = estimar_tendencia_nivel(df)
+        st.metric("Dirección observada · 3 días", tendencia)
+        st.caption(motivo_tendencia)
+        return
+
     lluvia_media_total = float(pronostico_horario["Precipitacion_mm"].sum())
     tendencia, motivo_tendencia = estimar_tendencia_nivel(df)
     clima, lluvia, nivel_futuro = st.columns(3)
@@ -1999,130 +2006,183 @@ else:
         "ZonificacionHidrografica/MapServer/0)."
     )
 
-# ═══════════════════════════ GRÁFICA ═══════════════════════════
-col_titulo, col_periodo = st.columns([1.5, 1])
-with col_titulo:
-    st.subheader("Histórico de niveles")
-with col_periodo:
-    periodo = st.selectbox("Período", list(PERIODOS_GRAFICA))
-dias_periodo = PERIODOS_GRAFICA[periodo]
-if dias_periodo is None:
-    datos_grafica = df.copy()
-else:
-    datos_grafica = df[df["Fecha"] >= fecha_ult - pd.Timedelta(days=dias_periodo)].copy()
-datos_grafica["FechaTxt"] = [
-    fecha_es(fila.Fecha, con_hora=fila.Fuente.startswith("FEWS"))
-    for fila in datos_grafica.itertuples()
-]
-st.caption(
-    f"{len(datos_grafica):,} registros · "
-    f"{fecha_es(datos_grafica['Fecha'].iloc[0])} – {fecha_es(datos_grafica['Fecha'].iloc[-1])}"
-)
 
-fig = go.Figure(go.Scatter(
-    x=datos_grafica["Fecha"], y=datos_grafica["Nivel_cm"],
-    name="Nivel observado (cm)",
-    mode="lines",
-    line=dict(color="#167f94", width=1.2),
-    customdata=datos_grafica[["FechaTxt", "Fuente"]],
-    hovertemplate=(
-        "<b>%{customdata[0]}</b><br>Nivel: <b>%{y:.1f} cm</b>"
-        "<br>Fuente: %{customdata[1]}<extra></extra>"
-    ),
-))
-estilos = {"amarilla": ("#d4a017", "Amarilla"), "naranja": ("#e8710a", "Naranja"), "roja": ("#c62828", "Roja")}
-y_vals = list(datos_grafica["Nivel_cm"])
-for k, (color, nombre) in estilos.items():
-    val = umbrales["valores"][k]
-    if val is None:
-        continue
-    y_vals.append(val)
-    fig.add_hline(y=val, line_dash="dot", line_color=color, line_width=1,
-                  annotation_text=f"{nombre} {val:.0f} cm", annotation_position="top left",
-                  annotation_font=dict(color=color, size=11))
-y_vals.append(float(NIVEL_REFERENCIA_CM))
-fig.add_hline(
-    y=NIVEL_REFERENCIA_CM,
-    line_dash="dash",
-    line_color="#718a98",
-    line_width=1,
-    annotation_text="Referencia · 950 cm",
-    annotation_position="top left",
-    annotation_font=dict(color="#526b79", size=11),
-)
-rango = max(y_vals) - min(y_vals)
-fig.update_layout(
-    height=390, margin=dict(l=60, r=20, t=48, b=40),
-    hovermode="x", dragmode=False, hoverlabel=dict(font_size=16),
-    xaxis=dict(
-        fixedrange=True,
-        tickformat="%Y" if (datos_grafica["Fecha"].max() - datos_grafica["Fecha"].min()).days > 365 * 3 else "%d %b",
-    ),
-    yaxis=dict(
-        fixedrange=True, title="Nivel (cm)",
-        range=[min(y_vals) - 0.08 * rango, max(y_vals) + 0.12 * rango],
-    ),
-)
-aplicar_estilo_grafica(fig)
-cfg = {"displayModeBar": False}
-try:
-    st.plotly_chart(fig, width="stretch", config=cfg)
-except TypeError:   # versiones antiguas de Streamlit
-    st.plotly_chart(fig, use_container_width=True, config=cfg)
-with st.expander("Consultar las últimas 30 lecturas"):
-    recientes = df.copy()
-    recientes["Fecha y hora"] = recientes.apply(
-        lambda fila: fila["Ultima_lectura"]
-        if pd.notna(fila["Ultima_lectura"])
-        else fila["Fecha"],
-        axis=1,
-    )
-    recientes = recientes.sort_values("Fecha y hora", ascending=False).head(30)
-    recientes["Fecha y hora"] = recientes["Fecha y hora"].map(
-        lambda fecha: fecha_es(fecha, con_hora=True)
-    )
-    st.dataframe(
-        recientes[["Fecha y hora", "Nivel_cm", "Fuente"]].rename(
-            columns={"Nivel_cm": "Nivel (cm)"}
-        ),
-        hide_index=True,
-        width="stretch",
-    )
-    st.caption(f"Hora de última lectura: {fecha_es(ts_ult, con_hora=True)}")
-    if datos_fews is not None:
-        st.caption(
-            "FEWS consultado: "
-            f"{fecha_es(datos_fews['Consultado_en'].iloc[0], con_hora=True)}."
-        )
+def seccion_historico(df: pd.DataFrame, umbrales: dict, fecha_ult: pd.Timestamp) -> None:
+    col_titulo, col_periodo = st.columns([1.5, 1])
+    with col_titulo:
+        st.subheader("Histórico de niveles")
+    with col_periodo:
+        periodo = st.selectbox("Período", list(PERIODOS_GRAFICA))
+    dias_periodo = PERIODOS_GRAFICA[periodo]
+    if dias_periodo is None:
+        datos_grafica = df.copy()
     else:
-        st.caption("No se pudo consultar FEWS; mostrando el último dato guardado.")
+        datos_grafica = df[df["Fecha"] >= fecha_ult - pd.Timedelta(days=dias_periodo)].copy()
+    datos_grafica["FechaTxt"] = [
+        fecha_es(fila.Fecha, con_hora=fila.Fuente.startswith("FEWS"))
+        for fila in datos_grafica.itertuples()
+    ]
+    st.caption(
+        f"{len(datos_grafica):,} registros · "
+        f"{fecha_es(datos_grafica['Fecha'].iloc[0])} – {fecha_es(datos_grafica['Fecha'].iloc[-1])}"
+    )
 
-with st.expander("Ver umbrales usados"):
-    for k, (_, nombre) in estilos.items():
-        v, o = umbrales["valores"][k], umbrales["origen"][k]
-        st.write(f"**{nombre}:** {'—' if v is None else f'{v:.0f} cm'} ({o})")
+    fig = crear_grafica_historica(datos_grafica, umbrales)
+    cfg = {"displayModeBar": False}
+    try:
+        st.plotly_chart(fig, width="stretch", config=cfg)
+    except TypeError:
+        st.plotly_chart(fig, use_container_width=True, config=cfg)
 
-# ═══════════════════════════ COMPARTIR / DESCARGAR ═══════════════════════════
-st.divider()
-b1, b2 = st.columns(2)
-b1.download_button("Descargar histórico (CSV)", data=df.assign(Fecha=df["Fecha"].dt.strftime("%Y-%m-%d %H:%M"))
-                   .to_csv(index=False).encode("utf-8"),
-                   file_name="nivel_calamar.csv", mime="text/csv")
-if APP_URL:
-    msg = f"Nivel del río Magdalena en Calamar: {nivel_cm:.0f} cm ({nivel_cm / 100:.2f} m). Consulte aquí: {APP_URL}"
-    b2.link_button("Compartir por WhatsApp", f"https://wa.me/?text={quote(msg)}")
-else:
-    b2.caption("Para compartir: copie el enlace de esta página y envíelo por WhatsApp.")
+    with st.expander("Consultar las últimas 30 lecturas"):
+        recientes = df.copy()
+        recientes["Fecha y hora"] = recientes.apply(
+            lambda fila: fila["Ultima_lectura"]
+            if pd.notna(fila["Ultima_lectura"])
+            else fila["Fecha"],
+            axis=1,
+        )
+        recientes = recientes.sort_values("Fecha y hora", ascending=False).head(30)
+        recientes["Fecha y hora"] = recientes["Fecha y hora"].map(
+            lambda fecha: fecha_es(fecha, con_hora=True)
+        )
+        st.dataframe(
+            recientes[["Fecha y hora", "Nivel_cm", "Fuente"]].rename(
+                columns={"Nivel_cm": "Nivel (cm)"}
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+        st.caption(f"Hora de última lectura: {fecha_es(fecha_ult, con_hora=True)}")
 
-# ═══════════════════════════ PIE ═══════════════════════════
-st.markdown("---")
-st.caption(
-    f"**Fuente:** IDEAM, Hidrología Nacional Diaria y exportaciones DHIME; "
-    f"estación limnimétrica {ESTACION_CODIGO} – Calamar, Bolívar. "
-    "El histórico local muestra nivel medio diario y las últimas observaciones FEWS pueden ser intradiarias. "
-    "El histórico local se intenta actualizar tres veces al día y la consulta FEWS se conserva "
-    "en caché durante 5 minutos; las lecturas FEWS son preliminares y el IDEAM puede publicarlas "
-    "con retraso o corregirlas después. "
-    "Esta herramienta es informativa y **no reemplaza** los avisos "
-    "oficiales del IDEAM, la UNGRD ni del Consejo Municipal de Gestión del Riesgo."
-)
+    with st.expander("Ver umbrales usados"):
+        estilos = {
+            "amarilla": "Amarilla",
+            "naranja": "Naranja",
+            "roja": "Roja",
+        }
+        for k, nombre in estilos.items():
+            v, o = umbrales["valores"][k], umbrales["origen"][k]
+            st.write(f"**{nombre}:** {'—' if v is None else f'{v:.0f} cm'} ({o})")
+
+
+def seccion_compartir_descargar(df: pd.DataFrame, nivel_cm: float) -> None:
+    st.divider()
+    b1, b2 = st.columns(2)
+    b1.download_button(
+        "Descargar histórico (CSV)",
+        data=df.assign(
+            Fecha=df["Fecha"].dt.strftime("%Y-%m-%d %H:%M")
+        ).to_csv(index=False).encode("utf-8"),
+        file_name="nivel_calamar.csv",
+        mime="text/csv",
+    )
+    if APP_URL:
+        msg = (
+            f"Nivel del río Magdalena en Calamar: {nivel_cm:.0f} cm "
+            f"({nivel_cm / 100:.2f} m). Consulte aquí: {APP_URL}"
+        )
+        b2.link_button("Compartir por WhatsApp", f"https://wa.me/?text={quote(msg)}")
+    else:
+        b2.caption("Para compartir: copie el enlace de esta página y envíelo por WhatsApp.")
+
+
+def seccion_pie() -> None:
+    st.markdown("---")
+    st.caption(
+        f"**Fuente:** IDEAM, Hidrología Nacional Diaria y exportaciones DHIME; "
+        f"estación limnimétrica {ESTACION_CODIGO} – Calamar, Bolívar. "
+        "El histórico local muestra nivel medio diario y las últimas observaciones FEWS pueden ser intradiarias. "
+        "El histórico local se intenta actualizar tres veces al día y la consulta FEWS se conserva "
+        "en caché durante 5 minutos; las lecturas FEWS son preliminares y el IDEAM puede publicarlas "
+        "con retraso o corregirlas después. "
+        "Esta herramienta es informativa y **no reemplaza** los avisos "
+        "oficiales del IDEAM, la UNGRD ni del Consejo Municipal de Gestión del Riesgo."
+    )
+
+
+# ═══════════════════════════ FLUJO PRINCIPAL ═══════════════════════════
+def main() -> None:
+    st.set_page_config(
+        page_title="JUAN",
+        page_icon=JUAN_ICON_PATH,
+        layout="wide",
+    )
+    inyectar_estilos()
+
+    icon_data = base64.b64encode(JUAN_ICON_PATH.read_bytes()).decode("ascii")
+    cover_data = base64.b64encode(JUAN_COVER_PATH.read_bytes()).decode("ascii")
+    mostrar_encabezado(icon_data, cover_data)
+
+    if not CSV_PATH.exists():
+        st.error(
+            "Todavía no hay datos. Ejecute el workflow "
+            "«Actualizar datos nivel río Calamar» en GitHub Actions."
+        )
+        st.stop()
+
+    df, datos_fews, error_fews = cargar_datos_combinados()
+    if len(df) < 2:
+        st.warning("Hay muy pocos datos para mostrar el tablero.")
+        st.stop()
+
+    meta_lectura = calcular_metadatos_ultima_lectura(df)
+    nivel_cm = meta_lectura["nivel_cm"]
+    fecha_ult = meta_lectura["fecha_ult"]
+    umbrales = calcular_umbrales()
+
+    # Meteorología
+    tiempo_actual: dict | None = None
+    error_meteorologia: Exception | None = None
+    try:
+        with st.spinner("Actualizando el ambiente del río..."):
+            tiempo_actual = cargar_meteorologia()
+    except (requests.RequestException, ValueError) as exc:
+        error_meteorologia = exc
+
+    codigo_clima = int(tiempo_actual["weather_code"]) if tiempo_actual is not None else None
+    hora_local = (
+        pd.Timestamp(tiempo_actual["time"])
+        if tiempo_actual is not None
+        else pd.Timestamp.now(tz=METEO_ZONA_HORARIA).tz_localize(None)
+    )
+    noche = hora_local.hour < 6 or hora_local.hour >= 18
+    ambiente = tipo_ambiente(codigo_clima)
+    clima_texto = (
+        describir_tiempo(codigo_clima)
+        if codigo_clima is not None
+        else "clima no disponible"
+    )
+    viento_kmh = float(tiempo_actual["wind_speed_10m"]) if tiempo_actual is not None else 0.0
+
+    # Guardar en session_state para que la función de la columna del medidor acceda
+    st.session_state["tiempo_actual"] = tiempo_actual
+    st.session_state["error_meteorologia"] = error_meteorologia
+
+    seccion_medidor_y_lectura(
+        nivel_cm,
+        umbrales,
+        meta_lectura["estado_peces"],
+        meta_lectura["estado_peces_texto"],
+        ambiente,
+        clima_texto,
+        noche,
+        viento_kmh,
+        meta_lectura,
+    )
+
+    if meta_lectura["edad_dias"] > DIAS_MAX_SIN_DATOS:
+        st.warning(
+            f"El último dato publicado por el IDEAM tiene {meta_lectura['edad_dias']} días; "
+            "puede no representar el nivel actual del río."
+        )
+
+    seccion_visor_fews(datos_fews, error_fews, clima_texto)
+    seccion_lluvia_y_tendencia(df, tiempo_actual, error_meteorologia)
+    seccion_historico(df, umbrales, fecha_ult)
+    seccion_compartir_descargar(df, nivel_cm)
+    seccion_pie()
+
+
+if __name__ == "__main__":
+    main()
