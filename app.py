@@ -1854,6 +1854,7 @@ with mapa_col:
         f"{ESTACION_LATITUD:.6f}, {ESTACION_LONGITUD:.6f} · "
         f"{ESTACION_ALTITUD_MSNM} m s. n. m."
     )
+
     st.map(
         mapa_estacion,
         latitude="lat",
@@ -1863,6 +1864,12 @@ with mapa_col:
         zoom=14,
         height=420,
     )
+
+    st.metric(
+        "Estado del clima en Calamar",
+        clima_texto
+    )
+
 with nivel_col:
     if datos_fews is not None:
         lectura_fews = datos_fews.iloc[-1]
@@ -2062,9 +2069,6 @@ try:
     st.plotly_chart(fig, width="stretch", config=cfg)
 except TypeError:   # versiones antiguas de Streamlit
     st.plotly_chart(fig, use_container_width=True, config=cfg)
-
-st.metric("Estado del clima en Calamar", clima_texto)
-
 with st.expander("Consultar las últimas 30 lecturas"):
     recientes = df.copy()
     recientes["Fecha y hora"] = recientes.apply(
