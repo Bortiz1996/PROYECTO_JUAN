@@ -1039,7 +1039,16 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
 
   const perfiles = JSON.parse(datos.textContent);
   const superficie = Number(svg.dataset.superficie);
+  const surfaceSceneY = 250 - superficie;
   const estado = svg.dataset.estadoPeces;
+  const ambiente = svg.dataset.ambiente || "despejado";
+  const noche = svg.dataset.noche === "true";
+  const vientoKmh = Number(svg.dataset.viento || 0);
+  const windFactor = Math.min(Math.max(vientoKmh, 0), 45) / 45;
+  const isNightVal = noche ? 1.0 : 0.0;
+  const isStormVal = ambiente === "tormenta" ? 1.0 : 0.0;
+  const isRainVal = (ambiente === "lluvia" || ambiente === "tormenta") ? 1.0 : 0.0;
+
   const movimiento = {
     calm: {velocidad: 15, amplitud: 0.55, reaccion: 1.0},
     uncomfortable: {velocidad: 23, amplitud: 1.0, reaccion: 1.35},
@@ -1055,16 +1064,290 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
     pacora: {cuerpo: 0xafc7b6, lomo: 0x637c74, vientre: 0xe7e6cc, aleta: 0xcf8b4e, raya: 0x718c7e},
     capaz: {cuerpo: 0x9bb9b4, lomo: 0x526b70, vientre: 0xe8eee1, aleta: 0x758d89, raya: 0x5c7776},
   };
+
+  function createParticleTexture() {
+    const size = 32;
+    const c = document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext("2d");
+    const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, "rgba(235, 252, 255, 0.95)");
+    grad.addColorStop(0.45, "rgba(180, 238, 245, 0.45)");
+    grad.addColorStop(1, "rgba(120, 210, 225, 0.0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  function createWaterNormalMap(size = 256) {
+    const heightField = new Float32Array(size * size);
+    const twoPi = Math.PI * 2;
+    for (let y = 0; y < size; y++) {
+      const v = y / size;
+      for (let x = 0; x < size; x++) {
+        const u = x / size;
+        // Campo de alturas multi-octava periódico sin costuras
+        const h =
+          Math.sin(twoPi * (u * 2 + v * 1) + 0.4) * 0.34 +
+          Math.cos(twoPi * (u * 3 - v * 2) + 1.1) * 0.25 +
+          Math.sin(twoPi * (u * 5 + v * 3) + 2.3) * 0.18 +
+          Math.cos(twoPi * (u * 7 - v * 5) + 0.7) * 0.12 +
+          Math.sin(twoPi * (u * 11 + v * 8) + 1.9) * 0.07 +
+          Math.cos(twoPi * (u * 14 - v * 11)) * 0.04;
+        heightField[y * size + x] = h;
+      }
+    }
+
+    const data = new Uint8Array(size * size * 4);
+    const strength = 2.6;
+    for (let y = 0; y < size; y++) {
+      const yPrev = (y - 1 + size) % size;
+      const yNext = (y + 1) % size;
+      for (let x = 0; x < size; x++) {
+        const xPrev = (x - 1 + size) % size;
+        const xNext = (x + 1) % size;
+
+        const dX = (heightField[y * size + xNext] - heightField[y * size + xPrev]) * strength;
+        const dY = (heightField[yNext * size + x] - heightField[yPrev * size + x]) * strength;
+
+        const len = Math.hypot(-dX, -dY, 1.0);
+        const nx = -dX / len;
+        const ny = -dY / len;
+        const nz = 1.0 / len;
+
+        const idx = (y * size + x) * 4;
+        data[idx] = Math.round((nx * 0.5 + 0.5) * 255);
+        data[idx + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+        data[idx + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+        data[idx + 3] = 255;
+      }
+    }
+
+    const normalMap = new THREE.DataTexture(
+      data,
+      size,
+      size,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType
+    );
+    normalMap.wrapS = THREE.RepeatWrapping;
+    normalMap.wrapT = THREE.RepeatWrapping;
+    normalMap.colorSpace = THREE.NoColorSpace;
+    normalMap.generateMipmaps = true;
+    normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+    normalMap.magFilter = THREE.LinearFilter;
+    normalMap.needsUpdate = true;
+    return normalMap;
+  }
+
+  const WATER_VERTEX_SHADER = `
+    varying vec2 vUv;
+    varying vec2 vScenePos;
+    void main() {
+      vUv = uv;
+      vec4 worldPos = modelMatrix * vec4(position, 1.0);
+      vScenePos = worldPos.xy;
+      gl_Position = projectionMatrix * viewMatrix * worldPos;
+    }
+  `;
+
+  const WATER_BACK_FRAGMENT_SHADER = `
+    precision highp float;
+    uniform float uTime;
+    uniform float uSurfaceSceneY;
+    uniform float uWindFactor;
+    uniform float uNight;
+    uniform float uStorm;
+    uniform float uRain;
+    uniform vec2 uRipplePos;
+    uniform float uRippleAge;
+    uniform sampler2D uNormalMap;
+    varying vec2 vUv;
+    varying vec2 vScenePos;
+
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+        mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+        u.y
+      );
+    }
+
+    vec3 sampleFlowNormal(vec2 scenePos, float t, float wind) {
+      float flowSpeed = 0.032 + wind * 0.028;
+      vec2 uv1 = scenePos * vec2(0.0055, 0.011) - vec2(t * flowSpeed, t * 0.006);
+      vec2 uv2 = scenePos * vec2(0.0085, 0.016) - vec2(t * (flowSpeed * 1.45), -t * 0.009);
+      vec3 n1 = texture2D(uNormalMap, uv1).xyz * 2.0 - 1.0;
+      vec3 n2 = texture2D(uNormalMap, uv2).xyz * 2.0 - 1.0;
+      return normalize(vec3(n1.xy * 0.65 + n2.xy * 0.5, 1.0));
+    }
+
+    float causticPattern(vec2 p, float t) {
+      vec2 p1 = p * vec2(0.036, 0.055) + vec2(-t * 0.22, t * 0.14);
+      vec2 p2 = p * vec2(0.048, 0.032) + vec2(t * 0.18, -t * 0.19);
+      float w1 = sin(p1.x * 3.1 + sin(p1.y * 2.7 + t * 1.1) * 1.4);
+      float w2 = sin(p2.y * 3.4 + sin(p2.x * 2.5 - t * 0.9) * 1.3);
+      float w3 = cos((p1.x + p2.y) * 2.2 - t * 1.35);
+      float ridge = 1.0 - abs(w1 + w2 * 0.75 + w3 * 0.45) * 0.48;
+      return pow(clamp(ridge, 0.0, 1.0), 4.2);
+    }
+
+    void main() {
+      float x = vScenePos.x;
+      float y = vScenePos.y;
+
+      vec3 flowNormal = sampleFlowNormal(vScenePos, uTime, uWindFactor);
+
+      float waveSpeed = 1.1 + uWindFactor * 1.25;
+      float waveAmp = 2.1 + uWindFactor * 1.4;
+      float wave1 = sin(x * 0.074 - uTime * waveSpeed) * waveAmp;
+      float wave2 = sin(x * 0.135 + uTime * (waveSpeed * 0.72)) * (waveAmp * 0.45);
+      float wave3 = cos(x * 0.038 - uTime * (waveSpeed * 0.45)) * 1.1;
+      float surfaceY = uSurfaceSceneY + wave1 + wave2 + wave3 + flowNormal.y * 0.85;
+
+      float rippleDist = length(vec2(x, y) - uRipplePos);
+      float rippleEnv = exp(-uRippleAge * 1.15) * step(0.0, uRippleAge) * step(uRippleAge, 3.0);
+      float rippleWave = sin(rippleDist * 0.26 - uRippleAge * 9.5) * exp(-rippleDist * 0.022) * rippleEnv;
+      surfaceY += rippleWave * 2.2 * smoothstep(45.0, 0.0, abs(y - uSurfaceSceneY));
+
+      float depth = surfaceY - y;
+      if (depth < -1.0) discard;
+      float surfaceEdge = smoothstep(-0.8, 1.8, depth);
+
+      float waterSpan = max(40.0, surfaceY - (-250.0));
+      float normDepth = clamp(depth / waterSpan, 0.0, 1.0);
+
+      vec3 shallowDay = mix(vec3(0.19, 0.66, 0.72), vec3(0.24, 0.56, 0.61), uStorm * 0.75 + uRain * 0.35);
+      vec3 midDay     = mix(vec3(0.07, 0.44, 0.54), vec3(0.10, 0.35, 0.43), uStorm * 0.8 + uRain * 0.3);
+      vec3 deepDay    = mix(vec3(0.03, 0.20, 0.29), vec3(0.04, 0.16, 0.24), uStorm * 0.8);
+
+      vec3 shallowNight = vec3(0.09, 0.38, 0.47);
+      vec3 midNight     = vec3(0.04, 0.22, 0.32);
+      vec3 deepNight    = vec3(0.02, 0.10, 0.18);
+
+      vec3 cShallow = mix(shallowDay, shallowNight, uNight);
+      vec3 cMid     = mix(midDay, midNight, uNight);
+      vec3 cDeep    = mix(deepDay, deepNight, uNight);
+
+      vec3 baseColor = normDepth < 0.45
+        ? mix(cShallow, cMid, normDepth / 0.45)
+        : mix(cMid, cDeep, (normDepth - 0.45) / 0.55);
+
+      vec3 lightDir = normalize(vec3(-0.35, 0.72, 0.60));
+      float ndotl = max(0.0, dot(flowNormal, lightDir));
+      float flowSpecular = pow(ndotl, 9.0) * exp(-normDepth * 1.45) * (1.0 - uStorm * 0.65);
+      vec3 specTint = mix(vec3(0.80, 0.98, 1.0), vec3(0.45, 0.74, 0.88), uNight);
+      baseColor += specTint * flowSpecular * mix(0.26, 0.11, uNight);
+
+      float rayAngleCoord = (x + 170.0) * 0.82 - depth * 0.38 + flowNormal.x * 14.0;
+      float ray1 = sin(rayAngleCoord * 0.045 + uTime * 0.35 + noise(vec2(x * 0.02, uTime * 0.15)) * 1.4);
+      float ray2 = sin(rayAngleCoord * 0.088 - uTime * 0.24 + 1.7);
+      float godRay = pow(clamp(ray1 * 0.55 + ray2 * 0.45, 0.0, 1.0), 2.4);
+      float rayAtten = exp(-normDepth * 2.1) * (1.0 - uStorm * 0.72) * (1.0 - uRain * 0.42);
+      vec3 rayColor = mix(vec3(0.75, 0.96, 0.98), vec3(0.45, 0.72, 0.88), uNight);
+      baseColor += rayColor * godRay * rayAtten * mix(0.22, 0.09, uNight);
+
+      vec2 causticCoord = vec2(x + depth * 0.18, y * 1.35) + flowNormal.xy * 18.0;
+      float caust = causticPattern(causticCoord, uTime * (0.85 + uWindFactor * 0.45));
+      float caustFade = exp(-normDepth * 2.4) * (1.0 - uStorm * 0.65);
+      vec3 caustColor = mix(vec3(0.62, 0.95, 0.96), vec3(0.35, 0.68, 0.82), uNight);
+      baseColor += caustColor * caust * caustFade * mix(0.32, 0.14, uNight);
+
+      float turbidity = noise(vec2(x * 0.028 - uTime * 0.24, y * 0.032 + uTime * 0.05));
+      baseColor += (turbidity - 0.5) * vec3(0.035, 0.055, 0.045) * (0.5 + 0.5 * normDepth);
+
+      float meniscus = exp(-depth * 0.22);
+      float shimmer = pow(max(0.0, sin(x * 0.16 - uTime * 2.6 + wave2 * 2.0 + flowNormal.x * 1.6)), 6.0);
+      vec3 rimColor = mix(vec3(0.84, 0.98, 1.0), vec3(0.55, 0.80, 0.92), uNight);
+      baseColor += rimColor * meniscus * (0.20 + shimmer * 0.24) * (1.0 - uStorm * 0.45);
+
+      baseColor += vec3(0.55, 0.92, 0.96) * max(0.0, rippleWave) * 0.38;
+
+      if (uRain > 0.1) {
+        float splash = pow(noise(vec2(x * 0.35, floor(uTime * 7.0) * 1.7)), 9.0) * meniscus;
+        baseColor += vec3(0.75, 0.92, 0.96) * splash * uRain * 0.85;
+      }
+
+      float alpha = mix(0.34, 0.72, pow(normDepth, 0.8)) * surfaceEdge;
+      alpha = clamp(alpha + meniscus * 0.16, 0.0, 0.82);
+
+      gl_FragColor = vec4(baseColor, alpha);
+    }
+  `;
+
+  const WATER_FORE_FRAGMENT_SHADER = `
+    precision highp float;
+    uniform float uTime;
+    uniform float uSurfaceSceneY;
+    uniform float uWindFactor;
+    uniform float uNight;
+    uniform float uStorm;
+    uniform vec2 uRipplePos;
+    uniform float uRippleAge;
+    uniform sampler2D uNormalMap;
+    varying vec2 vScenePos;
+
+    float causticLight(vec2 p, float t) {
+      vec2 p1 = p * vec2(0.032, 0.05) + vec2(-t * 0.25, t * 0.12);
+      vec2 p2 = p * vec2(0.044, 0.03) + vec2(t * 0.19, -t * 0.17);
+      float w1 = sin(p1.x * 3.0 + sin(p1.y * 2.5 + t) * 1.3);
+      float w2 = cos(p2.y * 3.2 - sin(p2.x * 2.3 - t * 0.8) * 1.2);
+      return pow(clamp(1.0 - abs(w1 + w2) * 0.55, 0.0, 1.0), 4.5);
+    }
+
+    void main() {
+      float x = vScenePos.x;
+      float y = vScenePos.y;
+      float waveSpeed = 1.1 + uWindFactor * 1.25;
+      float waveAmp = 2.1 + uWindFactor * 1.4;
+      float surfaceY = uSurfaceSceneY + sin(x * 0.074 - uTime * waveSpeed) * waveAmp;
+      float depth = surfaceY - y;
+      if (depth < 0.0) discard;
+
+      float waterSpan = max(40.0, surfaceY - (-250.0));
+      float normDepth = clamp(depth / waterSpan, 0.0, 1.0);
+
+      float flowSpeed = 0.036 + uWindFactor * 0.03;
+      vec2 nUv = vScenePos * vec2(0.006, 0.012) - vec2(uTime * flowSpeed, uTime * 0.005);
+      vec2 flowPerturb = texture2D(uNormalMap, nUv).xy * 2.0 - 1.0;
+
+      float c = causticLight(vec2(x + depth * 0.14, y * 1.25) + flowPerturb * 14.0, uTime * 0.9);
+      float fade = exp(-normDepth * 2.2) * (1.0 - uStorm * 0.65) * smoothstep(0.0, 4.0, depth);
+      float glint = pow(max(0.0, flowPerturb.x * 0.6 + flowPerturb.y * 0.8), 5.0) * exp(-normDepth * 1.8) * 0.10;
+
+      float rippleDist = length(vec2(x, y) - uRipplePos);
+      float rippleEnv = exp(-uRippleAge * 1.3) * step(0.0, uRippleAge) * step(uRippleAge, 3.0);
+      float rippleRing = pow(max(0.0, sin(rippleDist * 0.30 - uRippleAge * 10.0)), 4.0)
+        * exp(-rippleDist * 0.024) * rippleEnv;
+
+      vec3 tint = mix(vec3(0.65, 0.96, 1.0), vec3(0.40, 0.72, 0.88), uNight);
+      float intensity = (c * fade * mix(0.16, 0.07, uNight)) + glint + rippleRing * 0.25;
+
+      gl_FragColor = vec4(tint * intensity, clamp(intensity, 0.0, 0.45));
+    }
+  `;
+
   const escena = new THREE.Scene();
   const camara = new THREE.OrthographicCamera(-170, 170, 250, -250, 0.1, 100);
   camara.position.set(0, 0, 50);
   camara.lookAt(0, 0, 0);
-  escena.add(new THREE.AmbientLight(0xd8f2f5, 1.45));
-  const solAgua = new THREE.DirectionalLight(0xffedc4, 2.2);
+  escena.add(new THREE.AmbientLight(noche ? 0x89bfd1 : 0xd8f2f5, noche ? 0.85 : 1.15));
+  escena.add(new THREE.HemisphereLight(noche ? 0x5c9db8 : 0x9be4ec, 0x072636, noche ? 0.55 : 0.72));
+  const solAgua = new THREE.DirectionalLight(noche ? 0xbcdcf2 : 0xffedc4, noche ? 1.45 : 2.25);
   solAgua.position.set(-80, 120, 110);
   escena.add(solAgua);
-  const reflejoAgua = new THREE.PointLight(0x75e7ed, 36, 420);
-  reflejoAgua.position.set(95, 55, 35);
+  const reflejoAgua = new THREE.PointLight(noche ? 0x4ca6c2 : 0x75e7ed, noche ? 24 : 38, 420);
+  reflejoAgua.position.set(95, Math.min(180, surfaceSceneY - 25), 35);
   escena.add(reflejoAgua);
 
   let renderer;
@@ -1082,6 +1365,88 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
+
+  // Planos volumétricos de agua con normal map animado
+  const waterNormalMap = createWaterNormalMap(256);
+  waterNormalMap.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const waterPlaneGeom = new THREE.PlaneGeometry(340, 500, 1, 1);
+  const waterBackUniforms = {
+    uTime: {value: 0},
+    uSurfaceSceneY: {value: surfaceSceneY},
+    uWindFactor: {value: windFactor},
+    uNight: {value: isNightVal},
+    uStorm: {value: isStormVal},
+    uRain: {value: isRainVal},
+    uRipplePos: {value: new THREE.Vector2(0, surfaceSceneY - 30)},
+    uRippleAge: {value: 99},
+    uNormalMap: {value: waterNormalMap},
+  };
+  const waterBackMat = new THREE.ShaderMaterial({
+    uniforms: waterBackUniforms,
+    vertexShader: WATER_VERTEX_SHADER,
+    fragmentShader: WATER_BACK_FRAGMENT_SHADER,
+    transparent: true,
+    depthWrite: false,
+  });
+  const waterBackMesh = new THREE.Mesh(waterPlaneGeom, waterBackMat);
+  waterBackMesh.position.set(0, 0, -12);
+  waterBackMesh.renderOrder = 0;
+  escena.add(waterBackMesh);
+
+  const waterForeUniforms = {
+    uTime: {value: 0},
+    uSurfaceSceneY: {value: surfaceSceneY},
+    uWindFactor: {value: windFactor},
+    uNight: {value: isNightVal},
+    uStorm: {value: isStormVal},
+    uRipplePos: {value: new THREE.Vector2(0, surfaceSceneY - 30)},
+    uRippleAge: {value: 99},
+    uNormalMap: {value: waterNormalMap},
+  };
+  const waterForeMat = new THREE.ShaderMaterial({
+    uniforms: waterForeUniforms,
+    vertexShader: WATER_VERTEX_SHADER,
+    fragmentShader: WATER_FORE_FRAGMENT_SHADER,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const waterForeMesh = new THREE.Mesh(waterPlaneGeom, waterForeMat);
+  waterForeMesh.position.set(0, 0, 5);
+  waterForeMesh.renderOrder = 3;
+  escena.add(waterForeMesh);
+
+  // Partículas en suspensión arrastradas por la corriente
+  const waterHeightPx = Math.max(10, 466 - superficie);
+  const particleCount = 64;
+  const particlePositions = new Float32Array(particleCount * 3);
+  const particleMeta = new Float32Array(particleCount * 3);
+  for (let i = 0; i < particleCount; i++) {
+    const px = -170 + ((i * 53.7) % 340);
+    const py = 250 - (superficie + 6 + ((i * 37.3) % Math.max(8, waterHeightPx - 10)));
+    const pz = i % 3 === 0 ? 2.4 : -4.0 + (i % 5);
+    particlePositions[i * 3] = px;
+    particlePositions[i * 3 + 1] = py;
+    particlePositions[i * 3 + 2] = pz;
+    particleMeta[i * 3] = 4.5 + (i % 7) * 1.8;
+    particleMeta[i * 3 + 1] = (i * 0.71) % (Math.PI * 2);
+    particleMeta[i * 3 + 2] = 0.6 + (i % 4) * 0.45;
+  }
+  const particleGeom = new THREE.BufferGeometry();
+  const particleAttr = new THREE.BufferAttribute(particlePositions, 3);
+  particleGeom.setAttribute("position", particleAttr);
+  const particleMat = new THREE.PointsMaterial({
+    size: 3.6,
+    map: createParticleTexture(),
+    transparent: true,
+    opacity: noche ? 0.22 : 0.34,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    color: noche ? 0x86cde0 : 0xcbf7fc,
+  });
+  const particlesMesh = new THREE.Points(particleGeom, particleMat);
+  particlesMesh.renderOrder = 2;
+  escena.add(particlesMesh);
 
   function material(color, roughness = 0.43, metalness = 0.02) {
     return new THREE.MeshStandardMaterial({
@@ -1264,6 +1629,9 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
     const maxY = 466 - alto * 0.65;
     const y = THREE.MathUtils.clamp(pantallaY, minY, Math.max(minY, maxY));
     pez.position.set(perfil.x - 170, 250 - y, (indice % 3) * 0.12);
+    pez.traverse((obj) => {
+      obj.renderOrder = 1;
+    });
     escena.add(pez);
     return {
       group: pez, geometry: cuerpoGeometria, baseVertices: originales,
@@ -1316,14 +1684,47 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
   else window.addEventListener("resize", redimensionar);
   redimensionar();
 
+  function shortestAngleDelta(target, current) {
+    return Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  }
+
   let tiempoPrevio = performance.now();
   let tiempo = 0;
+  let rippleStartTime = -99;
   function animar(marca) {
     requestAnimationFrame(animar);
     const delta = Math.min((marca - tiempoPrevio) / 1000, 0.04);
     tiempoPrevio = marca;
     tiempo += delta;
     const potencia = movimiento.amplitud * (reducido ? 0.2 : 1);
+
+    // Actualizar shaders de agua y normal map animado
+    const shaderTime = reducido ? 0 : tiempo;
+    waterBackUniforms.uTime.value = shaderTime;
+    waterForeUniforms.uTime.value = shaderTime;
+    const rippleAge = rippleStartTime >= 0 ? tiempo - rippleStartTime : 99;
+    waterBackUniforms.uRippleAge.value = rippleAge;
+    waterForeUniforms.uRippleAge.value = rippleAge;
+    reflejoAgua.intensity = (noche ? 22 : 36) + Math.sin(shaderTime * 1.9) * (noche ? 3 : 6);
+
+    if (!reducido) {
+      const pArr = particleAttr.array;
+      const maxParticleY = surfaceSceneY - 5;
+      const minParticleY = -216;
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const speed = particleMeta[i3];
+        const phase = particleMeta[i3 + 1];
+        const bob = particleMeta[i3 + 2];
+        let px = pArr[i3] + speed * delta * (0.7 + windFactor * 0.6);
+        if (px > 174) px -= 348;
+        let py = pArr[i3 + 1] + (Math.sin(tiempo * 1.3 + phase) * 1.4 + bob) * delta;
+        if (py > maxParticleY) py = minParticleY + 4;
+        pArr[i3] = px;
+        pArr[i3 + 1] = py;
+      }
+      particleAttr.needsUpdate = true;
+    }
 
     for (const pez of peces) {
       const faseNado = tiempo * (2.4 + pez.speedFactor * 0.45) + pez.phase * Math.PI * 2;
@@ -1347,14 +1748,17 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
         aleta.rotation.z = Math.sin(faseNado + index * Math.PI) * 0.07 * potencia;
       });
 
-      let angulo = 0;
+      let targetYaw = 0;
+      let targetPitch = 0;
       let avanzando = true;
       if (pez.target && tiempo < pez.target.hasta) {
         const dx = pez.target.x - pez.group.position.x;
         const dy = pez.target.y - pez.group.position.y;
         const distancia = Math.hypot(dx, dy);
+        targetYaw = dx < -2 ? Math.PI : 0;
+        targetPitch = Math.atan2(dy, Math.max(4, Math.abs(dx))) * 0.65;
         if (distancia > 3) {
-          angulo = Math.atan2(dy, dx);
+          const angulo = Math.atan2(dy, dx);
           avanzando = false;
           const paso = movimiento.velocidad * movimiento.reaccion * delta * intensidadMovimiento;
           pez.group.position.x += Math.cos(angulo) * paso;
@@ -1362,7 +1766,6 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
         } else {
           if (!pez.target.llegada) pez.target.llegada = tiempo + 0.65;
           if (tiempo < pez.target.llegada) {
-            angulo = Math.atan2(dy, dx);
             avanzando = false;
           } else pez.target = null;
         }
@@ -1376,19 +1779,13 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
         pez.group.position.y = THREE.MathUtils.damp(
           pez.group.position.y, 250 - y, 2.1, delta
         );
-      } else {
-        const objetivo = Math.atan2(Math.sin(angulo), Math.cos(angulo));
-        const actual = pez.group.rotation.z;
-        const diferencia = Math.atan2(Math.sin(objetivo - actual), Math.cos(objetivo - actual));
-        pez.group.rotation.z += diferencia * Math.min(1, delta * movimiento.reaccion * 4);
+        targetYaw = 0;
+        targetPitch = Math.sin(faseNado * 0.52) * 0.025 * potencia;
       }
-      if (avanzando) {
-        const cabeceo = Math.sin(faseNado * 0.52) * 0.025 * potencia;
-        const actual = pez.group.rotation.z;
-        pez.group.rotation.z += Math.atan2(
-          Math.sin(cabeceo - actual), Math.cos(cabeceo - actual)
-        ) * Math.min(1, delta * 2.2);
-      }
+
+      const turnRate = avanzando ? 3.5 : movimiento.reaccion * 5.0;
+      pez.group.rotation.y += shortestAngleDelta(targetYaw, pez.group.rotation.y) * Math.min(1, delta * turnRate);
+      pez.group.rotation.z += shortestAngleDelta(targetPitch, pez.group.rotation.z) * Math.min(1, delta * (avanzando ? 2.4 : turnRate));
 
       const screenX = pez.group.position.x + 170;
       const medio = pez.length * 0.62;
@@ -1401,7 +1798,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
         if (pez.wrapGhost) adoptarFantasma(pez);
         else {
           pez.group.position.x -= anchoEscena;
-          pez.group.rotation.z = 0;
+          pez.group.rotation.set(0, 0, 0);
         }
       }
       const actualY = 250 - pez.group.position.y;
@@ -1417,6 +1814,12 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
     const x = THREE.MathUtils.clamp(evento.detail.x, 0, anchoEscena) - 170;
     const y = THREE.MathUtils.clamp(evento.detail.y, superficie + 20, limiteInferior);
     const objetivo = new THREE.Vector3(x, 250 - y, 0);
+
+    // Activar onda en los shaders del agua en el punto de alimento
+    waterBackUniforms.uRipplePos.value.set(x, 250 - evento.detail.y);
+    waterForeUniforms.uRipplePos.value.set(x, 250 - evento.detail.y);
+    rippleStartTime = tiempo;
+
     const cercanos = peces
       .map((pez) => {
         let distancia = Math.hypot(
@@ -1550,12 +1953,18 @@ def crear_medidor_html(
     agua = (
         '<defs><linearGradient id="jn-agua" gradientUnits="userSpaceOnUse" '
         f'x1="0" y1="{y_s:.1f}" x2="0" y2="500">'
-        f'<stop offset="0" stop-color="{agua_superficie}" stop-opacity=".7"/>'
-        f'<stop offset=".45" stop-color="{agua_media}" stop-opacity=".84"/>'
-        f'<stop offset="1" stop-color="{agua_fondo}" stop-opacity=".95"/></linearGradient></defs>'
+        f'<stop offset="0" stop-color="{agua_superficie}" stop-opacity=".52"/>'
+        f'<stop offset=".16" stop-color="{agua_superficie}" stop-opacity=".62"/>'
+        f'<stop offset=".52" stop-color="{agua_media}" stop-opacity=".76"/>'
+        f'<stop offset="1" stop-color="{agua_fondo}" stop-opacity=".90"/></linearGradient>'
+        '<linearGradient id="jn-brillo-sup" gradientUnits="userSpaceOnUse" '
+        f'x1="0" y1="{y_s:.1f}" x2="0" y2="{y_s + 26:.1f}">'
+        f'<stop offset="0" stop-color="#ffffff" stop-opacity="{".14" if noche else ".28"}"/>'
+        '<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs>'
         f'<rect x="0" y="{y_s:.1f}" width="340" height="{500 - y_s:.1f}" fill="url(#jn-agua)"/>'
+        f'<rect x="0" y="{y_s:.1f}" width="340" height="26" fill="url(#jn-brillo-sup)"/>'
         f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:16s">'
-        f'<path d="{destellos}" stroke="#ffffff" stroke-opacity=".3" stroke-width="1" '
+        f'<path d="{destellos}" stroke="#ffffff" stroke-opacity="{".18" if noche else ".32"}" stroke-width="1" '
         'stroke-linecap="round" fill="none"/></g></g>'
     )
     factor_viento = max(0.55, 1 - min(max(viento_kmh, 0), 55) / 75)
@@ -1564,12 +1973,12 @@ def crear_medidor_html(
     ola_atras = (
         f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" '
         f'style="--dur:{duracion_ola_atras:.1f}s;--delay:-4s">'
-        f'<path d="{_ola_path(2.4, 68, 10, 12)}" fill="#63cbd6" opacity=".38"/></g></g>'
+        f'<path d="{_ola_path(2.4, 68, 10, 12)}" fill="{agua_superficie}" opacity=".34"/></g></g>'
     )
     ola_frente = (
         f'<g transform="translate(0 {y_s:.1f})"><g class="jn-ola" style="--dur:{duracion_ola_frente:.1f}s">'
-        f'<path d="{_ola_path(3.2, 85, 8, 14)}" fill="#3bb7c8" fill-opacity=".5" '
-        'stroke="#ffffff" stroke-opacity=".75" stroke-width="1.1"/></g></g>'
+        f'<path d="{_ola_path(3.2, 85, 8, 14)}" fill="{agua_superficie}" fill-opacity=".28" '
+        f'stroke="#e8fbff" stroke-opacity="{".42" if noche else ".72"}" stroke-width="1.2"/></g></g>'
     )
 
     marcas = []
@@ -1642,7 +2051,9 @@ def crear_medidor_html(
     <div class="gauge-feed-wrap">
       <div class="gauge-panel">
       <svg class="gauge-scene" viewBox="0 0 340 500" xmlns="http://www.w3.org/2000/svg"
-           data-superficie="{y_s:.1f}" data-estado-peces="{estado_peces}" role="group"
+           data-superficie="{y_s:.1f}" data-estado-peces="{estado_peces}"
+           data-ambiente="{ambiente}" data-noche="{'true' if noche else 'false'}"
+           data-viento="{viento_kmh:.2f}" role="group"
            aria-label="Hábitat del río en {clima_texto}, {'de noche' if noche else 'de día'}. Nivel {nivel_cm:.1f} centímetros; peces {estado_peces_texto}.">
         <title>Hábitat del río Magdalena en Calamar</title>
         {_escena_fija_svg(ambiente, noche)}
