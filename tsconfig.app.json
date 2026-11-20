@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/app",
+    "types": [],
+    "allowImportingTsExtensions": false,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  },
+  "files": ["src/main.ts"],
+  "include": ["src/plotly.d.ts", "src/app/**/*.ts"]
+}

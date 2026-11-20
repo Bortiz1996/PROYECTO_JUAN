@@ -1,23 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Input,
+  NgZone,
+  OnChanges,
+  OnDestroy,
+  ViewChild,
+  inject,
+} from "@angular/core";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import type { ThresholdsInfo } from "../types.ts";
-import type { AmbienteTipo } from "../utils/format.ts";
-import { buildRiverGaugeData, type FishProfile } from "../utils/riverScene.ts";
-
-interface RiverGaugeProps {
-  nivelCm: number;
-  umbrales: ThresholdsInfo;
-  estadoPeces: "calm" | "uncomfortable" | "scared";
-  estadoPecesTexto: string;
-  ambiente: AmbienteTipo;
-  climaTexto: string;
-  noche: boolean;
-  vientoKmh: number;
-  estacionCodigo: string;
-  nivelReferenciaCm: number;
-  nivelMurallaCm: number;
-}
+import type { ThresholdsInfo } from "../../../types";
+import type { AmbienteTipo } from "../../../utils/format";
+import { buildRiverGaugeData, type FishProfile } from "../../../utils/riverScene";
 
 interface FeedTarget {
   x: number;
@@ -149,7 +146,6 @@ function createWaterNormalMap(size = 256): THREE.DataTexture {
     const v = y / size;
     for (let x = 0; x < size; x++) {
       const u = x / size;
-      // Seamless periodic multi-octave ripple heightfield
       const h =
         Math.sin(twoPi * (u * 2 + v * 1) + 0.4) * 0.34 +
         Math.cos(twoPi * (u * 3 - v * 2) + 1.1) * 0.25 +
@@ -218,7 +214,6 @@ const WATER_VERTEX_SHADER = /* glsl */ `
   }
 `;
 
-// Volumetric underwater caustics, sunbeams, dual-scrolling normal map flow, sediment & click ripples
 const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
   precision highp float;
   uniform float uTime;
@@ -257,7 +252,6 @@ const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
     return normalize(vec3(n1.xy * 0.65 + n2.xy * 0.5, 1.0));
   }
 
-  // Interference-based dual-wave water caustic network
   float causticPattern(vec2 p, float t) {
     vec2 p1 = p * vec2(0.036, 0.055) + vec2(-t * 0.22, t * 0.14);
     vec2 p2 = p * vec2(0.048, 0.032) + vec2(t * 0.18, -t * 0.19);
@@ -269,12 +263,11 @@ const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
   }
 
   void main() {
-    float x = vScenePos.x; // -170 .. 170
-    float y = vScenePos.y; // -250 .. 250
+    float x = vScenePos.x;
+    float y = vScenePos.y;
 
     vec3 flowNormal = sampleFlowNormal(vScenePos, uTime, uWindFactor);
 
-    // Animated wave surface contour matching SVG wave speed + subtle normal perturbation
     float waveSpeed = 1.1 + uWindFactor * 1.25;
     float waveAmp = 2.1 + uWindFactor * 1.4;
     float wave1 = sin(x * 0.074 - uTime * waveSpeed) * waveAmp;
@@ -282,13 +275,11 @@ const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
     float wave3 = cos(x * 0.038 - uTime * (waveSpeed * 0.45)) * 1.1;
     float surfaceY = uSurfaceSceneY + wave1 + wave2 + wave3 + flowNormal.y * 0.85;
 
-    // Interactive feed ripple perturbing surface and underwater glow
     float rippleDist = length(vec2(x, y) - uRipplePos);
     float rippleEnv = exp(-uRippleAge * 1.15) * step(0.0, uRippleAge) * step(uRippleAge, 3.0);
     float rippleWave = sin(rippleDist * 0.26 - uRippleAge * 9.5) * exp(-rippleDist * 0.022) * rippleEnv;
     surfaceY += rippleWave * 2.2 * smoothstep(45.0, 0.0, abs(y - uSurfaceSceneY));
 
-    // Discard above water surface with soft anti-aliased meniscus
     float depth = surfaceY - y;
     if (depth < -1.0) discard;
     float surfaceEdge = smoothstep(-0.8, 1.8, depth);
@@ -296,7 +287,6 @@ const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
     float waterSpan = max(40.0, surfaceY - (-250.0));
     float normDepth = clamp(depth / waterSpan, 0.0, 1.0);
 
-    // Rich Magdalena river optical palette (shallow sunlit turquoise-olive -> deep channel teal)
     vec3 shallowDay = mix(vec3(0.19, 0.66, 0.72), vec3(0.24, 0.56, 0.61), uStorm * 0.75 + uRain * 0.35);
     vec3 midDay     = mix(vec3(0.07, 0.44, 0.54), vec3(0.10, 0.35, 0.43), uStorm * 0.8 + uRain * 0.3);
     vec3 deepDay    = mix(vec3(0.03, 0.20, 0.29), vec3(0.04, 0.16, 0.24), uStorm * 0.8);
@@ -313,14 +303,12 @@ const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
       ? mix(cShallow, cMid, normDepth / 0.45)
       : mix(cMid, cDeep, (normDepth - 0.45) / 0.55);
 
-    // Normal-mapped directional specular & river current sheen
     vec3 lightDir = normalize(vec3(-0.35, 0.72, 0.60));
     float ndotl = max(0.0, dot(flowNormal, lightDir));
     float flowSpecular = pow(ndotl, 9.0) * exp(-normDepth * 1.45) * (1.0 - uStorm * 0.65);
     vec3 specTint = mix(vec3(0.80, 0.98, 1.0), vec3(0.45, 0.74, 0.88), uNight);
     baseColor += specTint * flowSpecular * mix(0.26, 0.11, uNight);
 
-    // Volumetric diagonal sunbeams / moonbeams entering from upper-right
     float rayAngleCoord = (x + 170.0) * 0.82 - depth * 0.38 + flowNormal.x * 14.0;
     float ray1 = sin(rayAngleCoord * 0.045 + uTime * 0.35 + noise(vec2(x * 0.02, uTime * 0.15)) * 1.4);
     float ray2 = sin(rayAngleCoord * 0.088 - uTime * 0.24 + 1.7);
@@ -329,33 +317,27 @@ const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
     vec3 rayColor = mix(vec3(0.75, 0.96, 0.98), vec3(0.45, 0.72, 0.88), uNight);
     baseColor += rayColor * godRay * rayAtten * mix(0.22, 0.09, uNight);
 
-    // Animated caustic filaments refracted by the scrolling normal map
     vec2 causticCoord = vec2(x + depth * 0.18, y * 1.35) + flowNormal.xy * 18.0;
     float caust = causticPattern(causticCoord, uTime * (0.85 + uWindFactor * 0.45));
     float caustFade = exp(-normDepth * 2.4) * (1.0 - uStorm * 0.65);
     vec3 caustColor = mix(vec3(0.62, 0.95, 0.96), vec3(0.35, 0.68, 0.82), uNight);
     baseColor += caustColor * caust * caustFade * mix(0.32, 0.14, uNight);
 
-    // Subtle suspended river sediment / organic micro-variation flowing +X
     float turbidity = noise(vec2(x * 0.028 - uTime * 0.24, y * 0.032 + uTime * 0.05));
     baseColor += (turbidity - 0.5) * vec3(0.035, 0.055, 0.045) * (0.5 + 0.5 * normDepth);
 
-    // Subsurface Fresnel meniscus rim & specular shimmer right under the wave crest
     float meniscus = exp(-depth * 0.22);
     float shimmer = pow(max(0.0, sin(x * 0.16 - uTime * 2.6 + wave2 * 2.0 + flowNormal.x * 1.6)), 6.0);
     vec3 rimColor = mix(vec3(0.84, 0.98, 1.0), vec3(0.55, 0.80, 0.92), uNight);
     baseColor += rimColor * meniscus * (0.20 + shimmer * 0.24) * (1.0 - uStorm * 0.45);
 
-    // Interactive click/feed concentric highlight
     baseColor += vec3(0.55, 0.92, 0.96) * max(0.0, rippleWave) * 0.38;
 
-    // Rain micro-splashes along the surface
     if (uRain > 0.1) {
       float splash = pow(noise(vec2(x * 0.35, floor(uTime * 7.0) * 1.7)), 9.0) * meniscus;
       baseColor += vec3(0.75, 0.92, 0.96) * splash * uRain * 0.85;
     }
 
-    // Translucent alpha so submerged stonework & talud read through the water organically
     float alpha = mix(0.34, 0.72, pow(normDepth, 0.8)) * surfaceEdge;
     alpha = clamp(alpha + meniscus * 0.16, 0.0, 0.82);
 
@@ -363,7 +345,6 @@ const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
   }
 `;
 
-// Subtle foreground caustic & normal-mapped light-refraction veil passing over the 3D fish
 const WATER_FORE_FRAGMENT_SHADER = /* glsl */ `
   precision highp float;
   uniform float uTime;
@@ -404,7 +385,6 @@ const WATER_FORE_FRAGMENT_SHADER = /* glsl */ `
     float fade = exp(-normDepth * 2.2) * (1.0 - uStorm * 0.65) * smoothstep(0.0, 4.0, depth);
     float glint = pow(max(0.0, flowPerturb.x * 0.6 + flowPerturb.y * 0.8), 5.0) * exp(-normDepth * 1.8) * 0.10;
 
-    // Interactive expanding caustic ring on feed click
     float rippleDist = length(vec2(x, y) - uRipplePos);
     float rippleEnv = exp(-uRippleAge * 1.3) * step(0.0, uRippleAge) * step(uRippleAge, 3.0);
     float rippleRing = pow(max(0.0, sin(rippleDist * 0.30 - uRippleAge * 10.0)), 4.0)
@@ -417,91 +397,208 @@ const WATER_FORE_FRAGMENT_SHADER = /* glsl */ `
   }
 `;
 
-export function RiverGauge({
-  nivelCm,
-  umbrales,
-  estadoPeces,
-  estadoPecesTexto,
-  ambiente,
-  climaTexto,
-  noche,
-  vientoKmh,
-  estacionCodigo,
-  nivelReferenciaCm,
-  nivelMurallaCm,
-}: RiverGaugeProps) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const canvasMountRef = useRef<HTMLDivElement | null>(null);
+@Component({
+  selector: "app-river-gauge",
+  standalone: true,
+  template: `
+    <div class="gauge-feed-wrap">
+      <div class="gauge-panel" #gaugePanel>
+        <svg
+          #sceneSvg
+          class="gauge-scene"
+          viewBox="0 0 340 500"
+          xmlns="http://www.w3.org/2000/svg"
+          role="group"
+          [attr.aria-label]="ariaDescription"
+        >
+          <title>Hábitat del río Magdalena en Calamar</title>
+          <g #sceneGroup></g>
+        </svg>
+        <div
+          #canvasMount
+          class="fish-canvas-mount"
+          aria-hidden="true"
+        ></div>
+        <svg
+          #overlaySvg
+          class="gauge-overlay"
+          viewBox="0 0 340 500"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        ></svg>
+      </div>
+      <div class="gauge-feed-controls">
+        <button
+          type="button"
+          class="btn-action btn-feed"
+          (click)="handleFeedButtonClick()"
+        >
+          Alimentar peces
+        </button>
+        <span class="gauge-feed-hint">
+          O toca el agua en la escena ({{ estadoPecesTexto }})
+        </span>
+      </div>
+    </div>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class RiverGaugeComponent
+  implements AfterViewInit, OnChanges, OnDestroy
+{
+  @Input({ required: true }) nivelCm = 0;
+  @Input({ required: true }) umbrales!: ThresholdsInfo;
+  @Input({ required: true }) estadoPeces: "calm" | "uncomfortable" | "scared" =
+    "calm";
+  @Input({ required: true }) estadoPecesTexto = "tranquilos";
+  @Input({ required: true }) ambiente: AmbienteTipo = "despejado";
+  @Input({ required: true }) climaTexto = "";
+  @Input({ required: true }) noche = false;
+  @Input({ required: true }) vientoKmh = 0;
+  @Input({ required: true }) estacionCodigo = "29037020";
+  @Input({ required: true }) nivelReferenciaCm = 950;
+  @Input({ required: true }) nivelMurallaCm = 1000;
 
-  const gaugeData = useMemo(
-    () =>
-      buildRiverGaugeData({
-        nivelCm,
-        umbrales,
-        ambiente,
-        noche,
-        vientoKmh,
-        estacionCodigo,
-        nivelReferenciaCm,
-        nivelMurallaCm,
-      }),
-    [
-      nivelCm,
-      umbrales,
-      ambiente,
-      noche,
-      vientoKmh,
-      estacionCodigo,
-      nivelReferenciaCm,
-      nivelMurallaCm,
-    ]
-  );
+  @ViewChild("gaugePanel", { static: true })
+  private readonly panelRef!: ElementRef<HTMLDivElement>;
+  @ViewChild("sceneSvg", { static: true })
+  private readonly svgRef!: ElementRef<SVGSVGElement>;
+  @ViewChild("sceneGroup", { static: true })
+  private readonly sceneGroupRef!: ElementRef<SVGGElement>;
+  @ViewChild("canvasMount", { static: true })
+  private readonly canvasMountRef!: ElementRef<HTMLDivElement>;
+  @ViewChild("overlaySvg", { static: true })
+  private readonly overlaySvgRef!: ElementRef<SVGSVGElement>;
 
-  const dropFoodAt = useCallback(
-    (rawX: number, rawY: number) => {
-      const panel = panelRef.current;
-      const svg = svgRef.current;
-      if (!panel || !svg) return;
-      const superficie = gaugeData.ySurface;
-      const x = Math.max(50, Math.min(325, rawX));
-      const y = Math.max(superficie + 8, Math.min(466, rawY));
-
-      const comida = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      comida.setAttribute("class", "jn-alimento");
-      comida.setAttribute("cx", String(x));
-      comida.setAttribute("cy", String(y));
-      comida.setAttribute("r", "4");
-      svg.appendChild(comida);
-
-      const onda = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      onda.setAttribute("class", "jn-ondas-comida");
-      onda.setAttribute("cx", String(x));
-      onda.setAttribute("cy", String(y));
-      onda.setAttribute("r", "7");
-      svg.appendChild(onda);
-
-      panel.dispatchEvent(new CustomEvent("fish-feed", { detail: { x, y } }));
-      window.setTimeout(() => {
-        comida.remove();
-        onda.remove();
-      }, 2100);
+  private readonly ngZone = inject(NgZone);
+  private viewReady = false;
+  private gaugeData = buildRiverGaugeData({
+    nivelCm: 0,
+    umbrales: {
+      valores: { amarilla: null, naranja: null, roja: null },
+      origen: { amarilla: "sin definir", naranja: "sin definir", roja: "sin definir" },
     },
-    [gaugeData.ySurface]
-  );
+    ambiente: "despejado",
+    noche: false,
+    vientoKmh: 0,
+    estacionCodigo: "29037020",
+    nivelReferenciaCm: 950,
+    nivelMurallaCm: 1000,
+  });
 
-  // Feeding interaction on pointerdown inside the river gauge
-  useEffect(() => {
-    const panel = panelRef.current;
-    const svg = svgRef.current;
+  private cleanupPointer: (() => void) | null = null;
+  private cleanupThree: (() => void) | null = null;
+
+  get ariaDescription(): string {
+    return `Hábitat del río en ${this.climaTexto}, ${
+      this.noche ? "de noche" : "de día"
+    }. Nivel ${this.nivelCm.toFixed(1)} centímetros; peces ${
+      this.estadoPecesTexto
+    }.`;
+  }
+
+  ngAfterViewInit(): void {
+    this.viewReady = true;
+    this.syncGauge();
+  }
+
+  ngOnChanges(): void {
+    this.gaugeData = buildRiverGaugeData({
+      nivelCm: this.nivelCm,
+      umbrales: this.umbrales,
+      ambiente: this.ambiente,
+      noche: this.noche,
+      vientoKmh: this.vientoKmh,
+      estacionCodigo: this.estacionCodigo,
+      nivelReferenciaCm: this.nivelReferenciaCm,
+      nivelMurallaCm: this.nivelMurallaCm,
+    });
+    if (this.viewReady) {
+      this.syncGauge();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.teardownListeners();
+  }
+
+  handleFeedButtonClick(): void {
+    const minY = Math.min(440, this.gaugeData.ySurface + 24);
+    const maxY = Math.max(minY + 10, 455);
+    const randomX = 75 + Math.random() * 205;
+    const randomY = minY + Math.random() * (maxY - minY);
+    this.dropFoodAt(randomX, randomY);
+  }
+
+  private teardownListeners(): void {
+    if (this.cleanupPointer) {
+      this.cleanupPointer();
+      this.cleanupPointer = null;
+    }
+    if (this.cleanupThree) {
+      this.cleanupThree();
+      this.cleanupThree = null;
+    }
+  }
+
+  private syncGauge(): void {
+    this.teardownListeners();
+
+    const sceneGroup = this.sceneGroupRef?.nativeElement;
+    const overlaySvg = this.overlaySvgRef?.nativeElement;
+    if (sceneGroup) {
+      sceneGroup.innerHTML = this.gaugeData.sceneHtml;
+    }
+    if (overlaySvg) {
+      overlaySvg.innerHTML = this.gaugeData.overlayHtml;
+    }
+
+    this.ngZone.runOutsideAngular(() => {
+      this.setupPointerListener();
+      this.setupThreeScene();
+    });
+  }
+
+  private dropFoodAt(rawX: number, rawY: number): void {
+    const panel = this.panelRef?.nativeElement;
+    const svg = this.svgRef?.nativeElement;
     if (!panel || !svg) return;
-    const superficie = gaugeData.ySurface;
+    const superficie = this.gaugeData.ySurface;
+    const x = Math.max(50, Math.min(325, rawX));
+    const y = Math.max(superficie + 8, Math.min(466, rawY));
+
+    const comida = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    comida.setAttribute("class", "jn-alimento");
+    comida.setAttribute("cx", String(x));
+    comida.setAttribute("cy", String(y));
+    comida.setAttribute("r", "4");
+    svg.appendChild(comida);
+
+    const onda = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    onda.setAttribute("class", "jn-ondas-comida");
+    onda.setAttribute("cx", String(x));
+    onda.setAttribute("cy", String(y));
+    onda.setAttribute("r", "7");
+    svg.appendChild(onda);
+
+    panel.dispatchEvent(new CustomEvent("fish-feed", { detail: { x, y } }));
+    window.setTimeout(() => {
+      comida.remove();
+      onda.remove();
+    }, 2100);
+  }
+
+  private setupPointerListener(): void {
+    const panel = this.panelRef?.nativeElement;
+    const svg = this.svgRef?.nativeElement;
+    if (!panel || !svg) return;
+    const superficie = this.gaugeData.ySurface;
 
     const puntoLocal = (x: number, y: number) => {
       const ctm = svg.getScreenCTM();
@@ -515,65 +612,66 @@ export function RiverGauge({
     const onPointerDown = (evento: PointerEvent) => {
       evento.preventDefault();
       const punto = puntoLocal(evento.clientX, evento.clientY);
-      dropFoodAt(punto.x, punto.y);
+      this.dropFoodAt(punto.x, punto.y);
     };
 
     panel.addEventListener("pointerdown", onPointerDown);
-    return () => {
+    this.cleanupPointer = () => {
       panel.removeEventListener("pointerdown", onPointerDown);
     };
-  }, [gaugeData.ySurface, dropFoodAt]);
+  }
 
-  // Three.js 3D water volume + caustics + drifting particles + 3D fish habitat
-  useEffect(() => {
-    const panel = panelRef.current;
-    const mount = canvasMountRef.current;
+  private setupThreeScene(): void {
+    const panel = this.panelRef?.nativeElement;
+    const mount = this.canvasMountRef?.nativeElement;
     if (!panel || !mount) return;
 
-    const superficie = gaugeData.ySurface;
+    const superficie = this.gaugeData.ySurface;
     const surfaceSceneY = 250 - superficie;
-    const perfiles = gaugeData.fishProfiles;
+    const perfiles = this.gaugeData.fishProfiles;
     const movimiento = {
       calm: { velocidad: 15, amplitud: 0.55, reaccion: 1.0 },
       uncomfortable: { velocidad: 23, amplitud: 1.0, reaccion: 1.35 },
       scared: { velocidad: 31, amplitud: 1.45, reaccion: 1.75 },
-    }[estadoPeces];
+    }[this.estadoPeces];
     const reducido = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
     const isSoftwareGl = detectSoftwareWebGL();
-    const windFactor = Math.min(Math.max(vientoKmh, 0), 45) / 45;
-    const isNightVal = noche ? 1.0 : 0.0;
-    const isStormVal = ambiente === "tormenta" ? 1.0 : 0.0;
+    const windFactor = Math.min(Math.max(this.vientoKmh, 0), 45) / 45;
+    const isNightVal = this.noche ? 1.0 : 0.0;
+    const isStormVal = this.ambiente === "tormenta" ? 1.0 : 0.0;
     const isRainVal =
-      ambiente === "lluvia" || ambiente === "tormenta" ? 1.0 : 0.0;
+      this.ambiente === "lluvia" || this.ambiente === "tormenta" ? 1.0 : 0.0;
 
     const escena = new THREE.Scene();
     const camara = new THREE.OrthographicCamera(-170, 170, 250, -250, 0.1, 100);
     camara.position.set(0, 0, 50);
     camara.lookAt(0, 0, 0);
 
-    // Underwater lighting rig adapted to time of day & weather
-    const ambientIntensity = noche ? 0.85 : 1.15;
+    const ambientIntensity = this.noche ? 0.85 : 1.15;
     escena.add(
-      new THREE.AmbientLight(noche ? 0x89bfd1 : 0xd8f2f5, ambientIntensity)
+      new THREE.AmbientLight(
+        this.noche ? 0x89bfd1 : 0xd8f2f5,
+        ambientIntensity
+      )
     );
     escena.add(
       new THREE.HemisphereLight(
-        noche ? 0x5c9db8 : 0x9be4ec,
+        this.noche ? 0x5c9db8 : 0x9be4ec,
         0x072636,
-        noche ? 0.55 : 0.72
+        this.noche ? 0.55 : 0.72
       )
     );
     const solAgua = new THREE.DirectionalLight(
-      noche ? 0xbcdcf2 : 0xffedc4,
-      noche ? 1.45 : 2.25
+      this.noche ? 0xbcdcf2 : 0xffedc4,
+      this.noche ? 1.45 : 2.25
     );
     solAgua.position.set(-80, 120, 110);
     escena.add(solAgua);
     const reflejoAgua = new THREE.PointLight(
-      noche ? 0x4ca6c2 : 0x75e7ed,
-      noche ? 24 : 38,
+      this.noche ? 0x4ca6c2 : 0x75e7ed,
+      this.noche ? 24 : 38,
       420
     );
     reflejoAgua.position.set(95, Math.min(180, surfaceSceneY - 25), 35);
@@ -605,7 +703,7 @@ export function RiverGauge({
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const envTarget = pmremGenerator.fromScene(new RoomEnvironment(), 0.04);
     escena.environment = envTarget.texture;
-    escena.environmentIntensity = noche ? 0.25 : 0.38;
+    escena.environmentIntensity = this.noche ? 0.25 : 0.38;
     pmremGenerator.dispose();
 
     const disposables: Array<{ dispose: () => void }> = [envTarget];
@@ -614,7 +712,6 @@ export function RiverGauge({
       return item;
     };
 
-    // ── Realistic Volumetric Water Planes (Back Volume + Foreground Caustic Veil) ──
     const waterNormalMap = track(createWaterNormalMap(256));
     waterNormalMap.anisotropy = isSoftwareGl
       ? 1
@@ -670,21 +767,21 @@ export function RiverGauge({
     waterForeMesh.renderOrder = 3;
     escena.add(waterForeMesh);
 
-    // ── Suspended River Particles (micro-bubbles & organic motes drifting in current) ──
     const waterHeightPx = Math.max(10, 466 - superficie);
     const particleCount = 64;
     const particlePositions = new Float32Array(particleCount * 3);
-    const particleMeta = new Float32Array(particleCount * 3); // speed, phase, bobAmp
+    const particleMeta = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
       const px = -170 + ((i * 53.7) % 340);
-      const py = 250 - (superficie + 6 + ((i * 37.3) % Math.max(8, waterHeightPx - 10)));
+      const py =
+        250 - (superficie + 6 + ((i * 37.3) % Math.max(8, waterHeightPx - 10)));
       const pz = i % 3 === 0 ? 2.4 : -4.0 + (i % 5);
       particlePositions[i * 3] = px;
       particlePositions[i * 3 + 1] = py;
       particlePositions[i * 3 + 2] = pz;
-      particleMeta[i * 3] = 4.5 + (i % 7) * 1.8; // drift speed +X
+      particleMeta[i * 3] = 4.5 + (i % 7) * 1.8;
       particleMeta[i * 3 + 1] = (i * 0.71) % (Math.PI * 2);
-      particleMeta[i * 3 + 2] = 0.6 + (i % 4) * 0.45; // vertical buoyancy
+      particleMeta[i * 3 + 2] = 0.6 + (i % 4) * 0.45;
     }
     const particleGeom = track(new THREE.BufferGeometry());
     const particleAttr = new THREE.BufferAttribute(particlePositions, 3);
@@ -695,10 +792,10 @@ export function RiverGauge({
         size: 3.6,
         map: particleTex,
         transparent: true,
-        opacity: noche ? 0.22 : 0.34,
+        opacity: this.noche ? 0.22 : 0.34,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
-        color: noche ? 0x86cde0 : 0xcbf7fc,
+        color: this.noche ? 0x86cde0 : 0xcbf7fc,
       })
     );
     const particlesMesh = new THREE.Points(particleGeom, particleMat);
@@ -1096,6 +1193,8 @@ export function RiverGauge({
     let frameId = 0;
     let disposed = false;
 
+    const nightMode = this.noche;
+
     function afterDraw(cb: () => void) {
       const gl = renderer.getContext() as WebGL2RenderingContext;
       if (typeof gl.fenceSync === "function") {
@@ -1131,7 +1230,6 @@ export function RiverGauge({
       tiempo += delta;
       const potencia = movimiento.amplitud * (reducido ? 0.2 : 1);
 
-      // Update water shader uniforms & subtle caustic light shimmer
       const shaderTime = reducido ? 0 : tiempo;
       waterBackUniforms.uTime.value = shaderTime;
       waterForeUniforms.uTime.value = shaderTime;
@@ -1139,9 +1237,9 @@ export function RiverGauge({
       waterBackUniforms.uRippleAge.value = rippleAge;
       waterForeUniforms.uRippleAge.value = rippleAge;
       reflejoAgua.intensity =
-        (noche ? 22 : 36) + Math.sin(shaderTime * 1.9) * (noche ? 3 : 6);
+        (nightMode ? 22 : 36) +
+        Math.sin(shaderTime * 1.9) * (nightMode ? 3 : 6);
 
-      // Update suspended river particles drifting left-to-right
       if (!reducido) {
         const pArr = particleAttr.array as Float32Array;
         const maxParticleY = surfaceSceneY - 5;
@@ -1153,7 +1251,9 @@ export function RiverGauge({
           const bob = particleMeta[i3 + 2];
           let px = pArr[i3] + speed * delta * (0.7 + windFactor * 0.6);
           if (px > 174) px -= 348;
-          let py = pArr[i3 + 1] + (Math.sin(tiempo * 1.3 + phase) * 1.4 + bob) * delta;
+          let py =
+            pArr[i3 + 1] +
+            (Math.sin(tiempo * 1.3 + phase) * 1.4 + bob) * delta;
           if (py > maxParticleY) py = minParticleY + 4;
           pArr[i3] = px;
           pArr[i3 + 1] = py;
@@ -1297,7 +1397,6 @@ export function RiverGauge({
       );
       _feedObjective.set(x, 250 - y, 0);
 
-      // Trigger water shader ripple at the exact feed coordinates
       waterBackUniforms.uRipplePos.value.set(x, 250 - custom.detail.y);
       waterForeUniforms.uRipplePos.value.set(x, 250 - custom.detail.y);
       rippleStartTime = tiempo;
@@ -1340,7 +1439,7 @@ export function RiverGauge({
     panel.addEventListener("fish-feed", onFishFeed);
     frameId = requestAnimationFrame(animar);
 
-    return () => {
+    this.cleanupThree = () => {
       disposed = true;
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
@@ -1353,57 +1452,5 @@ export function RiverGauge({
       renderer.dispose();
       mount.replaceChildren();
     };
-  }, [gaugeData, estadoPeces, ambiente, noche, vientoKmh]);
-
-  const handleFeedButtonClick = () => {
-    const minY = Math.min(440, gaugeData.ySurface + 24);
-    const maxY = Math.max(minY + 10, 455);
-    const randomX = 75 + Math.random() * 205;
-    const randomY = minY + Math.random() * (maxY - minY);
-    dropFoodAt(randomX, randomY);
-  };
-
-  return (
-    <div className="gauge-feed-wrap">
-      <div className="gauge-panel" ref={panelRef}>
-        <svg
-          ref={svgRef}
-          className="gauge-scene"
-          viewBox="0 0 340 500"
-          xmlns="http://www.w3.org/2000/svg"
-          role="group"
-          aria-label={`Hábitat del río en ${climaTexto}, ${
-            noche ? "de noche" : "de día"
-          }. Nivel ${nivelCm.toFixed(1)} centímetros; peces ${estadoPecesTexto}.`}
-        >
-          <title>Hábitat del río Magdalena en Calamar</title>
-          <g dangerouslySetInnerHTML={{ __html: gaugeData.sceneHtml }} />
-        </svg>
-        <div
-          ref={canvasMountRef}
-          className="fish-canvas-mount"
-          aria-hidden="true"
-        />
-        <svg
-          className="gauge-overlay"
-          viewBox="0 0 340 500"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-          dangerouslySetInnerHTML={{ __html: gaugeData.overlayHtml }}
-        />
-      </div>
-      <div className="gauge-feed-controls">
-        <button
-          type="button"
-          className="btn-action btn-feed"
-          onClick={handleFeedButtonClick}
-        >
-          Alimentar peces
-        </button>
-        <span className="gauge-feed-hint">
-          O toca el agua en la escena ({estadoPecesTexto})
-        </span>
-      </div>
-    </div>
-  );
+  }
 }

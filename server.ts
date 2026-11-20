@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import express from "express";
@@ -931,20 +932,44 @@ async function startServer() {
     }
   });
 
+  const distDir = path.join(ROOT_DIR, "dist");
+
   if (process.env.NODE_ENV !== "production") {
-    const { createServer } = await import("vite");
-    const vite = await createServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distDir = path.join(ROOT_DIR, "dist");
-    app.use(express.static(distDir));
-    app.get("/{*splat}", (_req, res) => {
-      res.sendFile(path.join(distDir, "index.html"));
-    });
+    const ngBin = path.join(ROOT_DIR, "node_modules", "@angular", "cli", "bin", "ng.js");
+    const ngWatch = spawn(
+      process.execPath,
+      [ngBin, "build", "--watch", "--configuration", "development"],
+      {
+        cwd: ROOT_DIR,
+        stdio: "inherit",
+        env: { ...process.env, NG_CLI_ANALYTICS: "false", CI: "true" },
+      }
+    );
+
+    const stopWatch = () => {
+      if (!ngWatch.killed) {
+        ngWatch.kill("SIGTERM");
+      }
+    };
+    process.on("SIGINT", stopWatch);
+    process.on("SIGTERM", stopWatch);
+    process.on("exit", stopWatch);
   }
+
+  app.use(express.static(distDir));
+  app.get("/{*splat}", (_req, res) => {
+    const indexPath = path.join(distDir, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+      return;
+    }
+    res
+      .status(503)
+      .setHeader("Content-Type", "text/html; charset=utf-8")
+      .send(
+        '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta http-equiv="refresh" content="2"><title>JUAN</title></head><body style="font-family:sans-serif;padding:2rem;color:#123d53">Compilando aplicación Angular...</body></html>'
+      );
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`JUAN listening on http://0.0.0.0:${PORT}`);

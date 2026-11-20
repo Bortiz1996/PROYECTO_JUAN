@@ -1,5 +1,5 @@
-import type { ThresholdsInfo } from "../types.ts";
-import type { AmbienteTipo } from "./format.ts";
+import type { ThresholdsInfo } from "../types";
+import type { AmbienteTipo } from "./format";
 
 export interface FishProfile {
   especie:
