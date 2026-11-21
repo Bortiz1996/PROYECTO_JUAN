@@ -248,50 +248,105 @@ a:focus-visible {
   padding: 10px 0 calc(74px + env(safe-area-inset-bottom, 0px));
 }
 
-.obs-station-rail {
-  display: none;
-}
-
-.obs-feed-column {
+/* ── Original JUAN Profile / Logo Card ── */
+.profile-card {
+  position: relative;
+  overflow: hidden;
   width: 100%;
-  min-width: 0;
-}
-
-.obs-mobile-intro {
+  margin: 0 0 10px;
   background: var(--obs-surface);
   border-top: 1px solid var(--obs-border);
   border-bottom: 1px solid var(--obs-border);
-  padding: 0.9rem 1rem;
-  margin-bottom: 10px;
 }
 
-.obs-mobile-intro-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.profile-cover {
+  position: relative;
+  overflow: hidden;
+  height: 148px;
+  background: radial-gradient(
+      ellipse at 18% 120%,
+      rgba(114, 198, 186, 0.75),
+      transparent 42%
+    ),
+    radial-gradient(
+      ellipse at 88% 110%,
+      rgba(76, 158, 177, 0.85),
+      transparent 48%
+    ),
+    linear-gradient(125deg, #123d53, #087f98 62%, #55a9ad);
 }
 
-.obs-mobile-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+.profile-cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--cover-image);
+  background-position: center 58%;
+  background-size: cover;
+  opacity: 0.42;
+}
+
+.profile-avatar {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  width: 120px;
+  height: 120px;
+  transform: translateX(-50%);
   object-fit: cover;
-  border: 1px solid var(--obs-border);
-  flex-shrink: 0;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgba(20, 45, 60, 0.18);
+  background: #fff;
 }
 
-.obs-mobile-title {
-  margin: 0;
-  font-size: 1.02rem;
+.profile-content {
+  padding: 64px 18px 20px;
+  text-align: center;
+}
+
+.profile-content h1 {
+  display: inline-block;
+  min-width: 220px;
+  box-sizing: border-box;
+  color: #fff;
+  background: linear-gradient(110deg, #123d53, #087f98 70%, #1b99a4);
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(8, 77, 94, 0.2);
+  font-size: 2.6rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  line-height: 1.05;
+  margin: 0 0 0.6rem;
+  padding: 0.18em 0.42em 0.2em;
+}
+
+.profile-content h1::after {
+  content: "";
+  display: block;
+  width: 32%;
+  height: 3px;
+  margin: 0.1em auto 0;
+  border-radius: 99px;
+  background: #9ee3d6;
+}
+
+.profile-content h2 {
+  font-size: 1.08rem;
   font-weight: 700;
   color: var(--obs-ink);
-  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0.1rem 0 0.45rem;
 }
 
-.obs-mobile-subtitle {
-  margin: 0.15rem 0 0;
-  font-size: 0.8rem;
+.profile-content p {
   color: var(--obs-ink-muted);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.profile-content .pwa-install-wrap {
+  justify-content: center;
 }
 
 .obs-sync-notice {
@@ -532,8 +587,9 @@ a:focus-visible {
 }
 
 .nivel-gauge-column {
-  display: flex;
-  justify-content: center;
+  width: 100%;
+  margin: 0 -1.25rem;
+  width: calc(100% + 2.5rem);
 }
 
 .nivel-info-column {
@@ -928,8 +984,9 @@ a:focus-visible {
 
 /* ── River Gauge SVG + 3D Fish Canvas + Separate Legend ── */
 .gauge-feed-wrap {
-  width: min(100%, 340px);
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
   color: #365462;
 }
 
@@ -938,9 +995,10 @@ a:focus-visible {
   width: 100%;
   aspect-ratio: 340 / 500;
   overflow: hidden;
-  border-radius: 14px;
+  border-radius: 0;
   background: #1b5a85;
-  border: 1px solid var(--obs-border);
+  border-top: 1px solid var(--obs-border);
+  border-bottom: 1px solid var(--obs-border);
 }
 
 .gauge-scene,
@@ -981,7 +1039,7 @@ a:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.45rem 0.9rem;
-  margin-top: 0.55rem;
+  margin: 0.65rem 1.25rem 0;
   padding: 0.45rem 0.7rem;
   background: var(--obs-surface-subtle);
   border: 1px solid var(--obs-divider);
@@ -1013,7 +1071,7 @@ a:focus-visible {
 .gauge-feed-controls {
   display: flex;
   justify-content: flex-start;
-  margin-top: 0.55rem;
+  margin: 0.55rem 1.25rem 0;
 }
 
 .btn-feed {
@@ -1227,7 +1285,7 @@ a:focus-visible {
   justify-content: flex-end;
 }
 
-/* ── Tablet Breakpoint (>= 768px): Centered Full-Width Block Feed & Top Nav ── */
+/* ── Tablet & Desktop Breakpoints (>= 768px): Centered Full-Width Block Feed ── */
 @media (min-width: 768px) {
   .obs-desktop-nav-host {
     display: flex;
@@ -1238,20 +1296,56 @@ a:focus-visible {
   }
 
   .obs-workspace {
-    max-width: 840px;
+    max-width: 980px;
     margin: 0 auto;
-    padding: 1.25rem 1rem 3rem;
+    padding: 1.5rem 1.25rem 3.5rem;
   }
 
-  .obs-mobile-intro,
+  .profile-card {
+    border: 1px solid var(--obs-border);
+    border-radius: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 26px rgba(20, 45, 60, 0.06);
+  }
+
+  .profile-cover {
+    height: 180px;
+  }
+
+  .profile-avatar {
+    top: 104px;
+    width: 144px;
+    height: 144px;
+    border-width: 5px;
+  }
+
+  .profile-content {
+    padding: 78px 24px 24px;
+  }
+
+  .profile-content h1 {
+    min-width: 250px;
+    font-size: 3.2rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .profile-content h2 {
+    font-size: 1.35rem;
+    margin-bottom: 0.55rem;
+  }
+
+  .profile-content p {
+    font-size: 0.96rem;
+  }
+
   .obs-sync-notice {
     border: 1px solid var(--obs-border);
     border-radius: 14px;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
   }
 
   .obs-blocks-stack {
-    gap: 14px;
+    gap: 16px;
   }
 
   .hydro-block-card {
@@ -1260,103 +1354,23 @@ a:focus-visible {
   }
 
   .nivel-actual-grid {
-    grid-template-columns: 340px minmax(0, 1fr);
+    grid-template-columns: minmax(340px, 410px) minmax(0, 1fr);
     gap: 1.5rem;
   }
-}
 
-/* ── Desktop Breakpoint (>= 1160px): Sticky Station Rail + Wide Feed ── */
-@media (min-width: 1160px) {
-  .obs-workspace {
-    max-width: 1140px;
-    padding: 1.5rem 1.25rem 3.5rem;
-    display: grid;
-    grid-template-columns: 290px minmax(0, 1fr);
-    gap: 1.25rem;
-    align-items: start;
-  }
-
-  .obs-mobile-intro {
-    display: none;
-  }
-
-  .obs-station-rail {
-    display: block;
-    position: sticky;
-    top: 72px;
-  }
-
-  .obs-profile-block {
-    position: relative;
-    overflow: hidden;
-    background: var(--obs-surface);
-    border: 1px solid var(--obs-border);
-    border-radius: 14px;
-  }
-
-  .obs-profile-cover {
-    position: relative;
-    height: 88px;
-    background: linear-gradient(125deg, #123d53, #0e6b80 65%, #489ca2);
-  }
-
-  .obs-profile-cover::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: var(--cover-image);
-    background-position: center 58%;
-    background-size: cover;
-    opacity: 0.45;
-  }
-
-  .obs-profile-avatar {
-    position: relative;
-    display: block;
-    width: 72px;
-    height: 72px;
-    margin: -36px 0 0 1rem;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid #fff;
-    background: #fff;
-  }
-
-  .obs-profile-body {
-    padding: 0.65rem 1rem 1.1rem;
-  }
-
-  .obs-profile-title {
+  .nivel-gauge-column {
+    width: 100%;
     margin: 0;
-    font-size: 1.08rem;
-    font-weight: 750;
-    color: var(--obs-ink);
   }
 
-  .obs-profile-subtitle {
-    margin: 0.25rem 0 0;
-    font-size: 0.82rem;
-    color: var(--obs-ink-muted);
-    line-height: 1.4;
+  .gauge-panel {
+    border-radius: 14px;
+    border: 1px solid var(--obs-border);
   }
 
-  .obs-rail-metrics {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-    margin-top: 0.9rem;
-    padding-top: 0.85rem;
-    border-top: 1px solid var(--obs-divider);
-  }
-
-  .obs-rail-metric span {
-    display: block;
-    font-size: 0.72rem;
-    color: var(--obs-ink-muted);
-  }
-
-  .obs-rail-metric strong {
-    font-size: 1.05rem;
-    color: var(--obs-ink);
+  .gauge-legend,
+  .gauge-feed-controls {
+    margin-left: 0;
+    margin-right: 0;
   }
 }

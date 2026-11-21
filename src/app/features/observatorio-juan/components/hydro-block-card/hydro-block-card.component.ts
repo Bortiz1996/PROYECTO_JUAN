@@ -79,89 +79,82 @@ const RANGE_DAYS: Record<HistoricalRangeOption, number> = {
             }
             <span>{{ b.estadoLabel }}</span>
           </span>
-
-          <button
-            type="button"
-            class="block-header-action"
-            [attr.aria-expanded]="showDetails()"
-            (click)="toggleDetails()"
-          >
-            {{ showDetails() ? "Ocultar detalle" : b.accionSecundariaLabel }}
-          </button>
         </div>
       </header>
 
-      <!-- 2. Métrica o resumen principal -->
-      <div class="block-metric-band">
-        <div class="block-metric-primary">
-          <span class="block-metric-kicker">NIVEL LIMNIMÉTRICO</span>
-          <div class="block-metric-value-row">
-            <span class="block-metric-value tabular-nums">
-              {{ formatNumberComma(b.lectura.nivelCm, 1) }}
-              <span class="block-metric-unit">cm</span>
-            </span>
-
-            @if (b.lectura.variacionCm > 0) {
-              <span
-                class="reading-trend-arrow reading-trend-up"
-                role="img"
-                aria-label="El nivel del río subió"
-                title="El nivel del río subió"
-              >
-                <svg viewBox="0 0 20 28" fill="currentColor" aria-hidden="true">
-                  <path d="M10 2L18 11.5H12.2V26H7.8V11.5H2L10 2Z" />
-                </svg>
+      <!-- 2. Métrica limnimétrica principal (solo en el bloque inicial de nivel actual) -->
+      @if (b.tipo === "nivel_actual") {
+        <div class="block-metric-band">
+          <div class="block-metric-primary">
+            <span class="block-metric-kicker">NIVEL LIMNIMÉTRICO</span>
+            <div class="block-metric-value-row">
+              <span class="block-metric-value tabular-nums">
+                {{ formatNumberComma(b.lectura.nivelCm, 1) }}
+                <span class="block-metric-unit">cm</span>
               </span>
-            } @else if (b.lectura.variacionCm < 0) {
-              <span
-                class="reading-trend-arrow reading-trend-down"
-                role="img"
-                aria-label="El nivel del río bajó"
-                title="El nivel del río bajó"
-              >
-                <svg viewBox="0 0 20 28" fill="currentColor" aria-hidden="true">
-                  <path d="M10 26L18 16.5H12.2V2H7.8V16.5H2L10 26Z" />
-                </svg>
-              </span>
-            }
 
-            <span class="block-metric-meters tabular-nums">
-              ({{ b.lectura.nivelMetros.toFixed(2) }} m)
-            </span>
+              @if (b.lectura.variacionCm > 0) {
+                <span
+                  class="reading-trend-arrow reading-trend-up"
+                  role="img"
+                  aria-label="El nivel del río subió"
+                  title="El nivel del río subió"
+                >
+                  <svg viewBox="0 0 20 28" fill="currentColor" aria-hidden="true">
+                    <path d="M10 2L18 11.5H12.2V26H7.8V11.5H2L10 2Z" />
+                  </svg>
+                </span>
+              } @else if (b.lectura.variacionCm < 0) {
+                <span
+                  class="reading-trend-arrow reading-trend-down"
+                  role="img"
+                  aria-label="El nivel del río bajó"
+                  title="El nivel del río bajó"
+                >
+                  <svg viewBox="0 0 20 28" fill="currentColor" aria-hidden="true">
+                    <path d="M10 26L18 16.5H12.2V2H7.8V16.5H2L10 26Z" />
+                  </svg>
+                </span>
+              }
+
+              <span class="block-metric-meters tabular-nums">
+                ({{ b.lectura.nivelMetros.toFixed(2) }} m)
+              </span>
+            </div>
+          </div>
+
+          <div class="block-metric-context">
+            <div class="block-variation-row">
+              @if (b.lectura.variacionCm > 0) {
+                <svg
+                  class="variation-delta reading-trend-up"
+                  viewBox="0 0 10 10"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <polygon points="5,1.5 9.5,8.5 0.5,8.5" />
+                </svg>
+              } @else if (b.lectura.variacionCm < 0) {
+                <svg
+                  class="variation-delta reading-trend-down"
+                  viewBox="0 0 10 10"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <polygon points="5,8.5 9.5,1.5 0.5,1.5" />
+                </svg>
+              }
+              <span class="tabular-nums">{{ b.lectura.variacionTexto }}</span>
+            </div>
+            <p class="block-field-summary">
+              {{ b.resumenCampo }} · Cota crítica:
+              <strong class="tabular-nums">
+                {{ b.lectura.cotaReferenciaMetros.toFixed(2).replace(".", ",") }} m
+              </strong>
+            </p>
           </div>
         </div>
-
-        <div class="block-metric-context">
-          <div class="block-variation-row">
-            @if (b.lectura.variacionCm > 0) {
-              <svg
-                class="variation-delta reading-trend-up"
-                viewBox="0 0 10 10"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <polygon points="5,1.5 9.5,8.5 0.5,8.5" />
-              </svg>
-            } @else if (b.lectura.variacionCm < 0) {
-              <svg
-                class="variation-delta reading-trend-down"
-                viewBox="0 0 10 10"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <polygon points="5,8.5 9.5,1.5 0.5,1.5" />
-              </svg>
-            }
-            <span class="tabular-nums">{{ b.lectura.variacionTexto }}</span>
-          </div>
-          <p class="block-field-summary">
-            {{ b.resumenCampo }} · Cota crítica:
-            <strong class="tabular-nums">
-              {{ b.lectura.cotaReferenciaMetros.toFixed(2).replace(".", ",") }} m
-            </strong>
-          </p>
-        </div>
-      </div>
+      }
 
       <!-- 3. Cuerpo visual / Contenido técnico según tipo de bloque -->
       <div class="block-body">
@@ -417,61 +410,6 @@ const RANGE_DAYS: Record<HistoricalRangeOption, number> = {
             }
           }
         }
-
-        @if (showDetails()) {
-          <div class="block-detail-drawer">
-            <div class="block-detail-head">
-              <strong>Detalle técnico y lecturas recientes</strong>
-              <span class="tabular-nums">
-                Estación {{ b.station.codigoIdeam }} ·
-                {{ b.station.latitud.toFixed(4) }},
-                {{ b.station.longitud.toFixed(4) }}
-              </span>
-            </div>
-
-            @if (b.latestReadings; as lr) {
-              @if (lr.length > 0) {
-                <div class="table-scroll">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th>Fecha y hora</th>
-                        <th>Nivel (cm)</th>
-                        <th>Fuente</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @for (
-                        r of lr.slice(0, 12);
-                        track r.fecha + '-' + r.fuente
-                      ) {
-                        <tr>
-                          <td class="tabular-nums">
-                            {{ fechaEs(r.ultimaLectura ?? r.fecha, true) }}
-                          </td>
-                          <td class="tabular-nums">{{ r.nivelCm.toFixed(1) }}</td>
-                          <td>{{ r.fuente }}</td>
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              } @else {
-                <p class="caption" style="margin-bottom: 0">
-                  Cuenca: {{ b.station.cuenca }} · Altitud:
-                  {{ b.station.altitudMsnm }} m s. n. m. · Cota crítica:
-                  {{ b.lectura.cotaReferenciaCm }} cm.
-                </p>
-              }
-            } @else {
-              <p class="caption" style="margin-bottom: 0">
-                Cuenca: {{ b.station.cuenca }} · Altitud:
-                {{ b.station.altitudMsnm }} m s. n. m. · Cota crítica:
-                {{ b.lectura.cotaReferenciaCm }} cm.
-              </p>
-            }
-          </div>
-        }
       </div>
 
       <!-- 4. Pie de bloque -->
@@ -485,18 +423,6 @@ const RANGE_DAYS: Record<HistoricalRangeOption, number> = {
         </div>
 
         <div class="block-footer-actions" role="group" aria-label="Acciones del bloque">
-          <button
-            type="button"
-            class="block-action-btn"
-            (click)="toggleDetails()"
-          >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-              <circle cx="10" cy="10" r="7.5" />
-              <path d="M10 9v4.5M10 6.2h.01" stroke-linecap="round" />
-            </svg>
-            <span>{{ showDetails() ? "Cerrar" : "Detalle" }}</span>
-          </button>
-
           <button
             type="button"
             class="block-action-btn"
@@ -535,7 +461,6 @@ export class HydroBlockCardComponent {
   readonly shareRequested = output<ObservatoryBlock>();
   readonly navigateTabRequested = output<ObservatoryNavTab>();
 
-  readonly showDetails = signal<boolean>(false);
   readonly expandedText = signal<boolean>(false);
   readonly selectedRange = signal<HistoricalRangeOption>("30d");
   readonly shareCopied = signal<boolean>(false);
@@ -696,10 +621,6 @@ export class HydroBlockCardComponent {
       },
     };
   });
-
-  toggleDetails(): void {
-    this.showDetails.update((v) => !v);
-  }
 
   toggleExpandedText(): void {
     this.expandedText.update((v) => !v);

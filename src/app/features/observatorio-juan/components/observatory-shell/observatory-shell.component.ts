@@ -75,106 +75,69 @@ const TAB_BLOCK_FILTER: Record<
         </div>
       </header>
 
-      <!-- Contenedor principal sobre fondo neutro -->
-      <div class="obs-workspace" id="inicio">
-        <!-- Ficha lateral fija en escritorio amplio (en móvil se muestra compacta arriba del feed) -->
-        <aside class="obs-station-rail" aria-label="Resumen de la estación Calamar">
-          <div class="obs-profile-block">
-            <div
-              class="obs-profile-cover"
-              [style.--cover-image]="'url(assets/juan_portada.webp)'"
-            ></div>
-            <img
-              class="obs-profile-avatar"
-              src="assets/juan_icon.png"
-              alt="Observatorio JUAN"
-              referrerpolicy="no-referrer"
-            />
-            <div class="obs-profile-body">
-              <h1 class="obs-profile-title">Observatorio JUAN</h1>
-              <p class="obs-profile-subtitle">
-                Río Magdalena · {{ primaryStation().municipio }},
-                {{ primaryStation().departamento }} · IDEAM
-                {{ primaryStation().codigoIdeam }}
-              </p>
-
-              @if (primaryReading(); as lr) {
-                <div class="obs-rail-metrics">
-                  <div class="obs-rail-metric">
-                    <span>Nivel actual</span>
-                    <strong class="tabular-nums">
-                      {{ lr.nivelMetros.toFixed(2).replace(".", ",") }} m
-                    </strong>
-                  </div>
-                  <div class="obs-rail-metric">
-                    <span>Cota crítica</span>
-                    <strong class="tabular-nums">
-                      {{ lr.cotaReferenciaMetros.toFixed(2).replace(".", ",") }} m
-                    </strong>
-                  </div>
-                </div>
-              }
-
-              <app-pwa-install />
-            </div>
-          </div>
-        </aside>
-
-        <!-- Columna principal de bloques completos apilados verticalmente -->
-        <main class="obs-feed-column" aria-label="Bloques del observatorio hidrológico">
-          <!-- Encabezado compacto móvil con acceso PWA -->
-          <section class="obs-mobile-intro" aria-label="Identificación de estación">
-            <div class="obs-mobile-intro-row">
-              <img
-                class="obs-mobile-avatar"
-                src="assets/juan_icon.png"
-                alt="Observatorio JUAN"
-                referrerpolicy="no-referrer"
-              />
-              <div class="obs-mobile-intro-text">
-                <h1 class="obs-mobile-title">
-                  Observatorio Hidrológico JUAN
-                </h1>
-                <p class="obs-mobile-subtitle">
-                  Río Magdalena · Calamar, Bolívar · IDEAM
-                  {{ primaryStation().codigoIdeam }}
-                </p>
-              </div>
-            </div>
-            <app-pwa-install />
-          </section>
-
-          @if (errorMessage()) {
-            <div class="obs-sync-notice" role="status">
-              {{ errorMessage() }} Mostrando el último conjunto de datos
-              disponible.
-            </div>
-          }
-
-          <div class="obs-blocks-stack">
-            @for (block of visibleBlocks(); track block.id) {
-              <app-hydro-block-card
-                [block]="block"
-                [refreshing]="refreshing()"
-                (refreshRequested)="fetchDashboard(true)"
-                (exportCsvRequested)="downloadCsv()"
-                (shareRequested)="shareBlock($event)"
-                (navigateTabRequested)="onTabChange($event)"
-              />
-            }
-          </div>
-
-          <footer class="obs-legal-footer">
+      <!-- Contenedor principal sobre fondo neutro con bloques completos apilados -->
+      <main
+        class="obs-workspace"
+        id="inicio"
+        aria-label="Bloques del observatorio hidrológico"
+      >
+        <!-- Bloque de portada con el logo original de JUAN -->
+        <section class="profile-card" aria-label="Perfil del proyecto JUAN">
+          <div
+            class="profile-cover"
+            [style.--cover-image]="'url(assets/juan_portada.webp)'"
+          ></div>
+          <img
+            class="profile-avatar"
+            src="assets/juan_icon.png"
+            alt="Imagen de JUAN"
+            referrerpolicy="no-referrer"
+          />
+          <div class="profile-content">
+            <h1>JUAN</h1>
+            <h2>
+              OBSERVATORIO MONITOREO DEL NIVEL DE RIO MAGDALENA EN CALAMAR
+              BOLIVAR
+            </h2>
             <p>
-              <strong>Fuente:</strong> IDEAM, Hidrología Nacional Diaria y
-              exportaciones DHIME; estación limnimétrica
-              {{ primaryStation().codigoIdeam }} – Calamar, Bolívar. Herramienta
-              ciudadana informativa; no reemplaza los avisos oficiales del
-              IDEAM, la UNGRD ni del Consejo Municipal de Gestión del Riesgo.
+              {{ primaryStation().nombre }}, {{ primaryStation().departamento }}
+              · Estación IDEAM {{ primaryStation().codigoIdeam }} · Nivel
+              observado
             </p>
-          </footer>
-        </main>
-      </div>
+            <app-pwa-install />
+          </div>
+        </section>
+
+        @if (errorMessage()) {
+          <div class="obs-sync-notice" role="status">
+            {{ errorMessage() }} Mostrando el último conjunto de datos
+            disponible.
+          </div>
+        }
+
+        <div class="obs-blocks-stack">
+          @for (block of visibleBlocks(); track block.id) {
+            <app-hydro-block-card
+              [block]="block"
+              [refreshing]="refreshing()"
+              (refreshRequested)="fetchDashboard(true)"
+              (exportCsvRequested)="downloadCsv()"
+              (shareRequested)="shareBlock($event)"
+              (navigateTabRequested)="onTabChange($event)"
+            />
+          }
+        </div>
+
+        <footer class="obs-legal-footer">
+          <p>
+            <strong>Fuente:</strong> IDEAM, Hidrología Nacional Diaria y
+            exportaciones DHIME; estación limnimétrica
+            {{ primaryStation().codigoIdeam }} – Calamar, Bolívar. Herramienta
+            ciudadana informativa; no reemplaza los avisos oficiales del IDEAM,
+            la UNGRD ni del Consejo Municipal de Gestión del Riesgo.
+          </p>
+        </footer>
+      </main>
 
       <!-- Barra de navegación inferior fija en móvil -->
       <app-bottom-nav
