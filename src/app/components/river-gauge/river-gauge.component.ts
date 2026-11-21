@@ -107,6 +107,12 @@ function shortestAngleDelta(target: number, current: number): number {
           aria-hidden="true"
         ></svg>
       </div>
+      <div class="gauge-legend" role="note" aria-label="Leyenda de referencia del medidor">
+        <span class="gauge-legend-item">
+          <span class="gauge-legend-line" aria-hidden="true"></span>
+          <span>Cota crítica: <strong>{{ criticalLevelLabel }}</strong></span>
+        </span>
+      </div>
       <div class="gauge-feed-controls">
         <button
           type="button"
@@ -131,7 +137,7 @@ export class RiverGaugeComponent
   @Input({ required: true }) noche = false;
   @Input({ required: true }) vientoKmh = 0;
   @Input({ required: true }) estacionCodigo = "29037020";
-  @Input({ required: true }) nivelReferenciaCm = 950;
+  @Input({ required: true }) nivelReferenciaCm = 985;
   @Input({ required: true }) nivelMurallaCm = 1000;
 
   @ViewChild("gaugePanel", { static: true })
@@ -166,11 +172,15 @@ export class RiverGaugeComponent
     noche: false,
     vientoKmh: 0,
     estacionCodigo: "29037020",
-    nivelReferenciaCm: 950,
+    nivelReferenciaCm: 985,
     nivelMurallaCm: 1000,
   });
 
   private cleanupThree: (() => void) | null = null;
+
+  get criticalLevelLabel(): string {
+    return `${(this.nivelReferenciaCm / 100).toFixed(2).replace(".", ",")} m (${this.nivelReferenciaCm} cm)`;
+  }
 
   get ariaDescription(): string {
     return `Ecosistema del río en ${this.climaTexto}, ${

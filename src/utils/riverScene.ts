@@ -488,9 +488,10 @@ export function buildRiverGaugeData(params: {
     'font-family="Arial, sans-serif">m</text>' +
     `<polygon points="39,${yS.toFixed(1)} 47,${(yS - 4.5).toFixed(1)} 47,${(yS + 4.5).toFixed(1)}" fill="#ffffff" stroke="#167f94"/>`;
 
+  const criticoColor = "#c92a2a";
   const lineas = [
-    `<path d="M40 ${posicion(nivelReferenciaCm).toFixed(1)}H340" stroke="#0f2c3b" stroke-opacity=".6" ` +
-      'stroke-dasharray="5 4" stroke-width="1.2"/>',
+    `<path d="M40 ${posicion(nivelReferenciaCm).toFixed(1)}H340" stroke="${criticoColor}" stroke-opacity=".75" ` +
+      'stroke-dasharray="5 4" stroke-width="1.3"/>',
   ];
 
   interface Etiqueta {
@@ -511,13 +512,6 @@ export function buildRiverGaugeData(params: {
       prioridad: 0,
     },
     {
-      y: posicion(nivelReferenciaCm),
-      texto: `Ref. ${nivelReferenciaCm} cm`,
-      fondo: "#0f2c3b",
-      tinta: "#e3f0f5",
-      prioridad: 1,
-    },
-    {
       y: yS,
       texto: `${(nivelCm / 100).toFixed(2)} m`,
       fondo: "#167f94",
@@ -533,7 +527,14 @@ export function buildRiverGaugeData(params: {
   };
   (["amarilla", "naranja", "roja"] as const).forEach((nombre) => {
     const valor = umbrales.valores[nombre];
-    if (valor === null || valor < 0 || valor > nivelMurallaCm) return;
+    if (
+      valor === null ||
+      valor < 0 ||
+      valor > nivelMurallaCm ||
+      (nombre === "roja" && valor === nivelReferenciaCm)
+    ) {
+      return;
+    }
     const color = coloresUmbral[nombre];
     lineas.push(
       `<path d="M40 ${posicion(valor).toFixed(1)}H340" stroke="${color}" stroke-width="1.6" stroke-dasharray="2 3"/>`

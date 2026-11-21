@@ -12,7 +12,7 @@ const ESTACION_NOMBRE = "Calamar, Bolívar";
 const ESTACION_LATITUD = 10.243275;
 const ESTACION_LONGITUD = -74.915017;
 const ESTACION_ALTITUD_MSNM = 8;
-const NIVEL_REFERENCIA_CM = 950;
+const NIVEL_REFERENCIA_CM = 985;
 const NIVEL_MURALLA_CM = 1000;
 const DIAS_MAX_SIN_DATOS = 3;
 
@@ -34,7 +34,7 @@ const SUBZONAS_CSV_PATH = "assets/subzonas_magdalena_cauca.csv";
 
 const UMBRAL_AMARILLA_CM: number | null = null;
 const UMBRAL_NARANJA_CM: number | null = null;
-const UMBRAL_ROJA_CM: number | null = null;
+const UMBRAL_ROJA_CM: number | null = 985;
 
 interface ParsedTimestamp {
   iso: string;
@@ -729,7 +729,7 @@ function calculateThresholds(): ThresholdsInfo {
   const origen = {
     amarilla: oficiales.amarilla !== null ? "oficial" : "sin definir",
     naranja: oficiales.naranja !== null ? "oficial" : "sin definir",
-    roja: oficiales.roja !== null ? "oficial" : "sin definir",
+    roja: oficiales.roja !== null ? "cota crítica (9,85 m)" : "sin definir",
   };
   return { valores, origen };
 }
@@ -742,7 +742,8 @@ function evaluateAlertState(
   if (v.roja !== null && nivel >= v.roja) return "roja";
   if (v.naranja !== null && nivel >= v.naranja) return "naranja";
   if (v.amarilla !== null && nivel >= v.amarilla) return "amarilla";
-  return v.amarilla !== null && v.naranja !== null && v.roja !== null
+  return v.roja !== null ||
+    (v.amarilla !== null && v.naranja !== null)
     ? "verde"
     : "sin_umbral";
 }

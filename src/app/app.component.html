@@ -143,41 +143,45 @@
               <br />
               {{ d.meta.fuente }}
             </div>
+            <div class="reading-divider"></div>
+            @switch (d.alertState) {
+              @case ("verde") {
+                <p class="reading-status reading-status--normal">
+                  Por debajo de la cota crítica configurada ({{
+                    (d.config.nivelReferenciaCm / 100).toFixed(2)
+                  }} m · {{ d.config.nivelReferenciaCm }} cm). Manténgase atento
+                  a los avisos de las autoridades.
+                </p>
+              }
+              @case ("amarilla") {
+                <p class="reading-status reading-status--warning">
+                  Umbral amarillo oficial alcanzado. Consulte los avisos del
+                  Consejo Municipal de Gestión del Riesgo.
+                </p>
+              }
+              @case ("naranja") {
+                <p class="reading-status reading-status--warning">
+                  Umbral naranja oficial alcanzado. Siga las instrucciones de
+                  las autoridades locales.
+                </p>
+              }
+              @case ("roja") {
+                <p class="reading-status reading-status--critical">
+                  Cota crítica alcanzada (≥
+                  {{ (d.config.nivelReferenciaCm / 100).toFixed(2) }} m ·
+                  {{ d.config.nivelReferenciaCm }} cm). Atienda de inmediato las
+                  instrucciones de evacuación y autoridades.
+                </p>
+              }
+              @default {
+                <p class="reading-status">
+                  Sin cotas oficiales configuradas. El medidor muestra la
+                  lectura observada; no representa por sí solo un nivel de
+                  riesgo.
+                </p>
+              }
+            }
           </div>
-
-          @switch (d.alertState) {
-            @case ("verde") {
-              <div class="alert-box alert-success">
-                Dentro de las cotas oficiales configuradas. Manténgase atento a
-                los avisos de las autoridades.
-              </div>
-            }
-            @case ("amarilla") {
-              <div class="alert-box alert-warning">
-                Umbral amarillo oficial alcanzado. Consulte los avisos del
-                Consejo Municipal de Gestión del Riesgo.
-              </div>
-            }
-            @case ("naranja") {
-              <div class="alert-box alert-warning">
-                Umbral naranja oficial alcanzado. Siga las instrucciones de las
-                autoridades locales.
-              </div>
-            }
-            @case ("roja") {
-              <div class="alert-box alert-error">
-                Umbral rojo oficial alcanzado. Atienda de inmediato las
-                instrucciones de evacuación y autoridades.
-              </div>
-            }
-            @default {
-              <div class="status-note">
-                <strong>Sin cotas oficiales configuradas.</strong> El medidor
-                muestra la lectura observada; no representa por sí solo un nivel
-                de riesgo.
-              </div>
-            }
-          }
         </div>
       </section>
 

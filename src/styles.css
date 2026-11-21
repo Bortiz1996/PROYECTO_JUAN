@@ -331,6 +331,28 @@ a {
   color: #7d1e18;
 }
 
+.reading-status {
+  margin: 0;
+  padding: 0;
+  font-size: 0.88rem;
+  font-style: italic;
+  line-height: 1.55;
+  color: #536b79;
+}
+
+.reading-status--normal {
+  color: #2c5e43;
+}
+
+.reading-status--warning {
+  color: #7c5812;
+}
+
+.reading-status--critical {
+  color: #9e2222;
+  font-weight: 600;
+}
+
 .weather-card {
   background: #fff;
   border: 1px solid #dfe7ec;
@@ -606,6 +628,40 @@ a {
 .gauge-overlay {
   z-index: 2;
   pointer-events: none;
+}
+
+.gauge-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff;
+  border: 1px solid #dfe7ec;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  color: #334c5b;
+}
+
+.gauge-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.gauge-legend-item strong {
+  color: #122a3a;
+  font-weight: 650;
+}
+
+.gauge-legend-line {
+  display: inline-block;
+  width: 20px;
+  height: 0;
+  border-top: 2px dashed #c92a2a;
+  opacity: 0.85;
+  flex-shrink: 0;
 }
 
 .gauge-feed-controls {

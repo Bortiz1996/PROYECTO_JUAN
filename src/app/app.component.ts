@@ -181,7 +181,9 @@ export class AppComponent implements OnInit {
 
     (["amarilla", "naranja", "roja"] as const).forEach((k) => {
       const val = d.thresholds.valores[k];
-      if (val === null) return;
+      if (val === null || (k === "roja" && val === d.config.nivelReferenciaCm)) {
+        return;
+      }
       const [color, nombre] = estilos[k];
       yVals.push(val);
       shapes.push({
@@ -207,26 +209,33 @@ export class AppComponent implements OnInit {
       });
     });
 
+    const refCm = d.config.nivelReferenciaCm;
+    const refMetros = (refCm / 100).toFixed(2).replace(".", ",");
+    const esCritica = d.thresholds.valores.roja === refCm;
     shapes.push({
       type: "line",
       xref: "paper",
       x0: 0,
       x1: 1,
       yref: "y",
-      y0: d.config.nivelReferenciaCm,
-      y1: d.config.nivelReferenciaCm,
-      line: { color: "#718a98", width: 1, dash: "dash" },
+      y0: refCm,
+      y1: refCm,
+      line: {
+        color: esCritica ? "#c62828" : "#718a98",
+        width: esCritica ? 1.4 : 1,
+        dash: "dash",
+      },
     });
     annotations.push({
       xref: "paper",
       x: 0.01,
       xanchor: "left",
       yref: "y",
-      y: d.config.nivelReferenciaCm,
+      y: refCm,
       yanchor: "bottom",
-      text: "Referencia · 950 cm",
+      text: `Cota crítica · ${refCm} cm (${refMetros} m)`,
       showarrow: false,
-      font: { color: "#526b79", size: 11 },
+      font: { color: esCritica ? "#c62828" : "#526b79", size: 11 },
     });
 
     let minY = yVals[0];
@@ -332,7 +341,7 @@ export class AppComponent implements OnInit {
       [
         ["amarilla", "Amarilla"],
         ["naranja", "Naranja"],
-        ["roja", "Roja"],
+        ["roja", "Cota crítica (Roja)"],
       ] as const
     ).map(([key, nombre]) => ({
       key,
