@@ -77,8 +77,33 @@
         <div>
           <div class="reading-card">
             <div class="eyebrow">LECTURA MÁS RECIENTE</div>
-            <div class="reading-value">
-              {{ formatNumberComma(d.meta.nivelCm, 1) }}<span> cm</span>
+            <div class="reading-value-row">
+              <div class="reading-value">
+                {{ formatNumberComma(d.meta.nivelCm, 1) }}<span> cm</span>
+              </div>
+              @if (d.meta.deltaCm > 0) {
+                <span
+                  class="reading-trend-arrow reading-trend-up"
+                  role="img"
+                  aria-label="El nivel del río subió"
+                  title="El nivel del río subió"
+                >
+                  <svg viewBox="0 0 20 28" fill="currentColor" aria-hidden="true">
+                    <path d="M10 2L18 11.5H12.2V26H7.8V11.5H2L10 2Z" />
+                  </svg>
+                </span>
+              } @else if (d.meta.deltaCm < 0) {
+                <span
+                  class="reading-trend-arrow reading-trend-down"
+                  role="img"
+                  aria-label="El nivel del río bajó"
+                  title="El nivel del río bajó"
+                >
+                  <svg viewBox="0 0 20 28" fill="currentColor" aria-hidden="true">
+                    <path d="M10 26L18 16.5H12.2V2H7.8V16.5H2L10 26Z" />
+                  </svg>
+                </span>
+              }
             </div>
             <div class="reading-conversion">
               {{ (d.meta.nivelCm / 100).toFixed(2) }} m
@@ -91,7 +116,28 @@
               <br />
               <strong>Variación</strong>
               <br />
-              {{ d.meta.cambioTexto }}
+              <span class="reading-variation-line">
+                @if (d.meta.deltaCm > 0) {
+                  <svg
+                    class="variation-delta reading-trend-up"
+                    viewBox="0 0 10 10"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <polygon points="5,1.5 9.5,8.5 0.5,8.5" />
+                  </svg>
+                } @else if (d.meta.deltaCm < 0) {
+                  <svg
+                    class="variation-delta reading-trend-down"
+                    viewBox="0 0 10 10"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <polygon points="5,8.5 9.5,1.5 0.5,1.5" />
+                  </svg>
+                }
+                <span>{{ d.meta.cambioTexto }}</span>
+              </span>
               <br />
               <strong>Fuente</strong>
               <br />
