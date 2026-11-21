@@ -1,0 +1,45 @@
+name: Actualizar datos FEWS IDEAM
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"  # cada 15 minutos; solo hace commit si cambian los datos
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-fews
+  cancel-in-progress: false
+
+jobs:
+  actualizar-fews:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Actualizar serie FEWS IDEAM
+        run: node scripts/update-fews.mjs
+
+      - name: Commit y push si cambió fews_calamar.json
+        run: |
+          if [ -n "$(git status --porcelain -- assets/fews_calamar.json docs/assets/fews_calamar.json)" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- assets/fews_calamar.json
+            if [ -d docs/assets ]; then
+              git add -- docs/assets/fews_calamar.json
+            fi
+            git commit -m "Actualización FEWS Calamar $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git pull --rebase origin main || true
+            git push
+          else
+            echo "FEWS sin cambios; no se hace commit."
+          fi

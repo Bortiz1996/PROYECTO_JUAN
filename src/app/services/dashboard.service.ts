@@ -19,13 +19,16 @@ export class DashboardService {
       return buildStaticDashboard(refreshFews);
     }
 
+    const cacheBuster = `_=${Date.now()}`;
     const url = refreshFews
-      ? "api/dashboard?refreshFews=1"
-      : "api/dashboard";
+      ? `api/dashboard?refreshFews=1&${cacheBuster}`
+      : `api/dashboard?${cacheBuster}`;
 
     try {
       const payload = await firstValueFrom(
-        this.http.get<DashboardResponse>(url)
+        this.http.get<DashboardResponse>(url, {
+          headers: { "Cache-Control": "no-cache" },
+        })
       );
       if (payload && Array.isArray(payload.records)) {
         return payload;

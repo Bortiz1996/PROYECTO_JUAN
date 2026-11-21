@@ -328,6 +328,59 @@ interface FewsCache {
   error: string | null;
 }
 let fewsCache: FewsCache | null = null;
+let lastValidFewsRows: InternalRow[] | null = null;
+
+function loadBundledFewsFallback(): InternalRow[] | null {
+  try {
+    const jsonPath = path.join(ROOT_DIR, "assets", "fews_calamar.json");
+    if (!fs.existsSync(jsonPath)) return null;
+    const raw = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as {
+      records?: RawRecord[];
+    };
+    if (!raw || !Array.isArray(raw.records)) return null;
+    const rows: InternalRow[] = [];
+    for (const r of raw.records) {
+      const fecha = parseNaiveTimestamp(r?.f);
+      const nivelCm = cleanNivel(r?.n);
+      if (!fecha || nivelCm === null) continue;
+      rows.push({
+        fecha,
+        nivelCm: Math.round(nivelCm * 100) / 100,
+        ultimaLectura: parseNaiveTimestamp(r?.u) ?? fecha,
+        fuente: 1,
+      });
+    }
+    if (rows.length === 0) return null;
+    rows.sort((a, b) => a.fecha.ms - b.fecha.ms);
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchFewsCsvText(): Promise<string> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(FEWS_NIVEL_URL, {
+        headers: {
+          "User-Agent": "JUAN-RioCalamar/1.0 (Node; IDEAM FEWS viewer)",
+          "Cache-Control": "no-cache",
+        },
+        signal: AbortSignal.timeout(25_000),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} desde FEWS`);
+      }
+      return (await response.text()).replace(/^\uFEFF/, "");
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Error consultando FEWS IDEAM");
+}
 
 async function loadFews(forceRefresh = false): Promise<{
   rows: InternalRow[] | null;
@@ -339,16 +392,7 @@ async function loadFews(forceRefresh = false): Promise<{
   }
 
   try {
-    const response = await fetch(FEWS_NIVEL_URL, {
-      headers: {
-        "User-Agent": "JUAN-RioCalamar/1.0 (Node; IDEAM FEWS viewer)",
-      },
-      signal: AbortSignal.timeout(12_000),
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} desde FEWS`);
-    }
-    const text = (await response.text()).replace(/^\uFEFF/, "");
+    const text = await fetchFewsCsvText();
     const lines = text.split(/\r?\n/);
     if (lines.length < 2) {
       throw new Error("FEWS devolvió una respuesta vacía.");
@@ -361,19 +405,20 @@ async function loadFews(forceRefresh = false): Promise<{
       throw new Error("FEWS devolvió un formato de serie consolidada no reconocido.");
     }
 
-    const targetId = `00${ESTACION_CODIGO}`;
-    const rows: InternalRow[] = [];
+    const targetCode = ESTACION_CODIGO.replace(/^0+/, "");
+    const dedup = new Map<string, InternalRow>();
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
       const cols = parseCsvLine(line, ";");
-      if (cols[iEst]?.trim() !== targetId) continue;
+      const rowCode = (cols[iEst] || "").trim().replace(/^0+/, "");
+      if (rowCode !== targetCode) continue;
       const fecha = parseNaiveTimestamp(cols[iFecha]);
       const nivelM = Number(String(cols[iNivel] || "").trim().replace(",", "."));
       if (!fecha || !Number.isFinite(nivelM)) continue;
-      const nivelCm = cleanNivel(nivelM * 100);
+      const nivelCm = cleanNivel(Math.round(nivelM * 10000) / 100);
       if (nivelCm === null) continue;
-      rows.push({
+      dedup.set(fecha.iso, {
         fecha,
         nivelCm,
         ultimaLectura: fecha,
@@ -381,10 +426,13 @@ async function loadFews(forceRefresh = false): Promise<{
       });
     }
 
+    const rows = Array.from(dedup.values()).sort(
+      (a, b) => a.fecha.ms - b.fecha.ms
+    );
     if (rows.length === 0) {
       throw new Error("FEWS no devolvió lecturas válidas de nivel para Calamar.");
     }
-    rows.sort((a, b) => a.fecha.ms - b.fecha.ms);
+    lastValidFewsRows = rows;
     fewsCache = {
       expiresAt: now + 5 * 60 * 1000,
       rows,
@@ -394,12 +442,13 @@ async function loadFews(forceRefresh = false): Promise<{
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Error consultando FEWS IDEAM";
+    const fallbackRows = lastValidFewsRows ?? loadBundledFewsFallback();
     fewsCache = {
-      expiresAt: now + 60 * 1000,
-      rows: null,
+      expiresAt: now + 20 * 1000,
+      rows: fallbackRows,
       error: message,
     };
-    return { rows: null, error: message };
+    return { rows: fallbackRows, error: message };
   }
 }
 
@@ -891,6 +940,7 @@ async function startServer() {
 
       // Touch previoDayMs to avoid unused var lint warning
       void previoDayMs;
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
       res.json(payload);
     } catch (err) {
       const msg =

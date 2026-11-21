@@ -280,13 +280,16 @@ function parseSubzonasCsv(text: string): Subzona[] {
   return subzonas;
 }
 
+const FEWS_NIVEL_URL =
+  "https://fews.ideam.gov.co/visorfews/descargas/SeriesHM_conv.csv";
+
 async function loadHistoricalRows(refresh: boolean): Promise<InternalRow[]> {
   const fetchText = async (url: string, timeoutMs: number): Promise<string> => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, {
-        cache: refresh ? "no-cache" : "default",
+        cache: "no-store",
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -299,7 +302,8 @@ async function loadHistoricalRows(refresh: boolean): Promise<InternalRow[]> {
   };
 
   try {
-    const remoteText = await fetchText(RAW_CSV_URL, 6000);
+    const remoteUrl = refresh ? `${RAW_CSV_URL}?t=${Date.now()}` : RAW_CSV_URL;
+    const remoteText = await fetchText(remoteUrl, 6000);
     const parsed = parseHistoricalCsv(remoteText);
     if (parsed.length >= 2) return parsed;
   } catch {
@@ -326,13 +330,85 @@ function parseFewsJson(payload: FewsJsonPayload): InternalRow[] {
     const ultimaLectura = parseNaiveTimestamp(r?.u) ?? fecha;
     rows.push({
       fecha,
-      nivelCm,
+      nivelCm: Math.round(nivelCm * 100) / 100,
       ultimaLectura,
       fuente: 1,
     });
   }
   rows.sort((a, b) => a.fecha.ms - b.fecha.ms);
   return rows;
+}
+
+function parseFewsCsv(text: string): InternalRow[] {
+  const cleaned = text.replace(/^\uFEFF/, "");
+  const lines = cleaned.split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  const header = parseCsvLine(lines[0], ";").map((h) => h.trim());
+  const iEst = header.indexOf("ID_ESTACION");
+  const iFecha = header.indexOf("FECHA_HORA");
+  const iNivel = header.indexOf("NIVEL_INST");
+  if (iEst === -1 || iFecha === -1 || iNivel === -1) return [];
+
+  const targetCode = ESTACION_CODIGO.replace(/^0+/, "");
+  const dedup = new Map<string, InternalRow>();
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cols = parseCsvLine(line, ";");
+    const rowCode = (cols[iEst] || "").trim().replace(/^0+/, "");
+    if (rowCode !== targetCode) continue;
+    const fecha = parseNaiveTimestamp(cols[iFecha]);
+    const nivelM = Number(String(cols[iNivel] || "").trim().replace(",", "."));
+    if (!fecha || !Number.isFinite(nivelM)) continue;
+    const nivelCm = cleanNivel(Math.round(nivelM * 10000) / 100);
+    if (nivelCm === null) continue;
+    dedup.set(fecha.iso, {
+      fecha,
+      nivelCm,
+      ultimaLectura: fecha,
+      fuente: 1,
+    });
+  }
+  return Array.from(dedup.values()).sort((a, b) => a.fecha.ms - b.fecha.ms);
+}
+
+function mergeFewsSources(sources: InternalRow[][]): InternalRow[] {
+  const map = new Map<string, InternalRow>();
+  for (const list of sources) {
+    for (const row of list) {
+      map.set(row.fecha.iso, row);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.fecha.ms - b.fecha.ms);
+}
+
+async function fetchLiveFewsCsv(timeoutMs: number): Promise<InternalRow[]> {
+  const candidates = [
+    FEWS_NIVEL_URL,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(FEWS_NIVEL_URL)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(FEWS_NIVEL_URL)}`,
+  ];
+
+  const tryOne = async (url: string): Promise<InternalRow[]> => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      const parsed = parseFewsCsv(text);
+      if (parsed.length === 0) throw new Error("Sin lecturas válidas");
+      return parsed;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  };
+
+  return Promise.any(candidates.map((u) => tryOne(u)));
 }
 
 async function loadFewsRows(refresh: boolean): Promise<{
@@ -347,7 +423,7 @@ async function loadFewsRows(refresh: boolean): Promise<{
     const timer = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, {
-        cache: refresh ? "no-cache" : "default",
+        cache: "no-store",
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -359,30 +435,39 @@ async function loadFewsRows(refresh: boolean): Promise<{
     }
   };
 
-  try {
-    const remoteJson = await fetchJson(RAW_FEWS_URL, 6000);
-    const parsed = parseFewsJson(remoteJson);
-    if (parsed.length > 0) {
-      return { rows: parsed, error: null };
-    }
-  } catch {
-    // Fallback to local bundled FEWS snapshot.
+  const remoteUrl = refresh
+    ? `${RAW_FEWS_URL}?t=${Date.now()}`
+    : RAW_FEWS_URL;
+  const localUrl = refresh
+    ? `${BUNDLED_FEWS_PATH}?t=${Date.now()}`
+    : BUNDLED_FEWS_PATH;
+
+  const [localRes, remoteRes, liveRes] = await Promise.allSettled([
+    fetchJson(localUrl, 6000).then(parseFewsJson),
+    fetchJson(remoteUrl, 6000).then(parseFewsJson),
+    fetchLiveFewsCsv(7000),
+  ]);
+
+  const orderedSources: InternalRow[][] = [];
+  if (localRes.status === "fulfilled" && localRes.value.length > 0) {
+    orderedSources.push(localRes.value);
+  }
+  if (remoteRes.status === "fulfilled" && remoteRes.value.length > 0) {
+    orderedSources.push(remoteRes.value);
+  }
+  if (liveRes.status === "fulfilled" && liveRes.value.length > 0) {
+    orderedSources.push(liveRes.value);
   }
 
-  try {
-    const localJson = await fetchJson(BUNDLED_FEWS_PATH, 8000);
-    const parsed = parseFewsJson(localJson);
-    if (parsed.length > 0) {
-      return { rows: parsed, error: null };
-    }
-  } catch {
-    // No FEWS snapshot available yet.
+  const merged = mergeFewsSources(orderedSources);
+  if (merged.length > 0) {
+    return { rows: merged, error: null };
   }
 
   return {
     rows: null,
     error:
-      "En alojamiento estático (GitHub Pages) el navegador no puede consultar FEWS IDEAM directamente por CORS; se muestra el último histórico guardado.",
+      "No se pudieron obtener las lecturas recientes de FEWS IDEAM; se muestra el último histórico guardado.",
   };
 }
 

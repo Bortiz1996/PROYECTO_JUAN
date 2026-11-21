@@ -1,4 +1,4 @@
-const CACHE_NAME = "juan-pwa-v1";
+const CACHE_NAME = "juan-pwa-v2";
 const PRECACHE_URLS = [
   "./",
   "./index.html",
@@ -53,17 +53,20 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith("/nivel_calamar.csv");
 
   if (isNavigation || isDynamicData) {
-    event.respondWith(networkFirst(request, isNavigation));
+    event.respondWith(networkFirst(request, isNavigation, isDynamicData));
     return;
   }
 
   event.respondWith(staleWhileRevalidate(request));
 });
 
-async function networkFirst(request, isNavigation) {
+async function networkFirst(request, isNavigation, isDynamicData) {
   const cache = await caches.open(CACHE_NAME);
   try {
-    const response = await fetch(request);
+    const networkRequest = isDynamicData
+      ? new Request(request, { cache: "no-store" })
+      : request;
+    const response = await fetch(networkRequest);
     if (response && response.ok) {
       cache.put(request, response.clone());
     }
