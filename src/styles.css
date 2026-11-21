@@ -703,3 +703,118 @@ a {
     padding: 1.2rem;
   }
 }
+
+/* ── PWA Install & Offline UI ── */
+.pwa-offline-bar {
+  margin: 0.75rem auto 0;
+  max-width: 540px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  background: #fef7e0;
+  border: 1px solid #f2dc9b;
+  color: #6b4f0b;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.pwa-install-wrap {
+  margin-top: 0.85rem;
+  display: flex;
+  justify-content: center;
+}
+
+.pwa-install-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem 1.05rem;
+  border-radius: 10px;
+  border: 1px solid #0b6f84;
+  background: #123d53;
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(18, 61, 83, 0.16);
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+
+.pwa-install-btn:hover {
+  background: #0d546b;
+}
+
+.pwa-install-btn:active {
+  transform: translateY(1px);
+}
+
+.pwa-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(12, 30, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.pwa-modal-card {
+  width: min(100%, 420px);
+  background: #fff;
+  border: 1px solid #dfe7ec;
+  border-radius: 14px;
+  padding: 1.25rem 1.35rem;
+  text-align: left;
+  box-shadow: 0 18px 40px rgba(10, 28, 40, 0.25);
+}
+
+.pwa-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.pwa-modal-header h4 {
+  margin: 0;
+  color: #122a3a;
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
+.pwa-modal-close {
+  border: none;
+  background: #edf3f6;
+  color: #334c5b;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.pwa-modal-lead {
+  font-size: 0.9rem;
+  color: #405868;
+  margin-bottom: 0.65rem;
+}
+
+.pwa-modal-steps {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  color: #1d394a;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.pwa-modal-steps li {
+  margin-bottom: 0.4rem;
+}
+
+.pwa-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+

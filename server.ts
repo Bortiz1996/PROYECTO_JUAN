@@ -953,7 +953,19 @@ async function startServer() {
     process.on("exit", stopWatch);
   }
 
-  app.use(express.static(distDir));
+  app.use(
+    express.static(distDir, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".webmanifest")) {
+          res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (filePath.endsWith("sw.js")) {
+          res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache");
+        }
+      },
+    })
+  );
   app.get("/{*splat}", (_req, res) => {
     const indexPath = path.join(distDir, "index.html");
     if (fs.existsSync(indexPath)) {

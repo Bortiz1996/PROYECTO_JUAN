@@ -1,24 +1,33 @@
 {
-  "name": "JUAN",
+  "id": "../",
+  "name": "JUAN · Nivel del río Magdalena",
   "short_name": "JUAN",
-  "description": "Observatorio del nivel del río Magdalena en Calamar",
-  "start_url": "/",
-  "scope": "/",
+  "description": "Observatorio ciudadano del nivel del río Magdalena en la estación IDEAM 29037020 (Calamar, Bolívar).",
+  "start_url": "../",
+  "scope": "../",
   "display": "standalone",
-  "background_color": "#081a2f",
-  "theme_color": "#081a2f",
+  "orientation": "portrait-primary",
+  "background_color": "#123d53",
+  "theme_color": "#123d53",
+  "lang": "es",
   "icons": [
     {
-      "src": "/app/static/juan_icon_192.png",
+      "src": "juan_icon_192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/app/static/juan_icon_512.png",
+      "src": "juan_icon_512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "juan_icon_maskable_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

@@ -7,6 +7,7 @@ import {
   signal,
 } from "@angular/core";
 import { PlotlyChartComponent } from "./components/plotly-chart/plotly-chart.component";
+import { PwaInstallComponent } from "./components/pwa-install/pwa-install.component";
 import { RiverGaugeComponent } from "./components/river-gauge/river-gauge.component";
 import { StationMapComponent } from "./components/station-map/station-map.component";
 import { DashboardService } from "./services/dashboard.service";
@@ -32,7 +33,12 @@ const PERIODOS_GRAFICA: Record<string, number | null> = {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [PlotlyChartComponent, RiverGaugeComponent, StationMapComponent],
+  imports: [
+    PlotlyChartComponent,
+    PwaInstallComponent,
+    RiverGaugeComponent,
+    StationMapComponent,
+  ],
   templateUrl: "./app.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
