@@ -43,17 +43,9 @@ const TAB_BLOCK_FILTER: Record<
   imports: [BottomNavComponent, HydroBlockCardComponent, PwaInstallComponent],
   template: `
     <div class="obs-shell">
-      <!-- Barra superior adaptable (3 zonas en escritorio, compacta en móvil) -->
+      <!-- Barra superior de navegación (escritorio/tableta, sin texto JUAN duplicado) -->
       <header class="obs-topbar">
         <div class="obs-topbar-inner">
-          <a
-            href="#inicio"
-            class="obs-brand-wordmark"
-            (click)="onBrandClick($event)"
-          >
-            JUAN
-          </a>
-
           <app-bottom-nav
             class="obs-desktop-nav-host"
             variant="desktop-links"
