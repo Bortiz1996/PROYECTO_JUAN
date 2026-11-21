@@ -23,6 +23,23 @@
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "assets",
+                "output": "assets"
+              },
+              {
+                "glob": "nivel_calamar.csv",
+                "input": ".",
+                "output": "assets"
+              },
+              {
+                "glob": "**/*",
+                "input": "static",
+                "output": "static"
+              }
+            ],
             "styles": [
               "node_modules/leaflet/dist/leaflet.css",
               "src/styles.css"

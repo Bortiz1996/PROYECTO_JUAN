@@ -369,4 +369,33 @@ export class AppComponent implements OnInit {
       this.periodo.set(target.value);
     }
   }
+
+  downloadCsv(): void {
+    const list = this.readings();
+    if (list.length === 0) return;
+
+    const fmtIso = (iso: string): string => {
+      const [datePart, timePart] = iso.split("T");
+      const hhmm = timePart ? timePart.slice(0, 5) : "00:00";
+      return `${datePart} ${hhmm}`;
+    };
+
+    const lines = ["Fecha,Nivel_cm,Fuente,Ultima_lectura"];
+    for (const r of list) {
+      const ult = r.ultimaLectura ? fmtIso(r.ultimaLectura) : "";
+      lines.push(`${fmtIso(r.fecha)},${r.nivelCm},${r.fuente},${ult}`);
+    }
+
+    const blob = new Blob([lines.join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "nivel_calamar.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 }

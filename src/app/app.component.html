@@ -3,11 +3,11 @@
     <section class="profile-card" aria-label="Perfil del proyecto JUAN">
       <div
         class="profile-cover"
-        [style.--cover-image]="'url(\'/assets/juan_portada.webp\')'"
+        [style.--cover-image]="'url(\'assets/juan_portada.webp\')'"
       ></div>
       <img
         class="profile-avatar"
-        src="/assets/juan_icon.png"
+        src="assets/juan_icon.png"
         alt="Imagen de JUAN"
       />
       <div class="profile-content">
@@ -423,13 +423,9 @@
       <hr class="section-divider" />
       <section class="two-col-grid">
         <div>
-          <a
-            class="btn-link"
-            href="/api/download.csv"
-            download="nivel_calamar.csv"
-          >
+          <button type="button" class="btn-link" (click)="downloadCsv()">
             Descargar histórico (CSV)
-          </a>
+          </button>
         </div>
         <div>
           @if (d.config.appUrl) {
