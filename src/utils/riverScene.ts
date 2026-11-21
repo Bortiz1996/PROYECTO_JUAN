@@ -1,23 +1,11 @@
 import type { ThresholdsInfo } from "../types";
 import type { AmbienteTipo } from "./format";
+import {
+  generateRiverFishProfiles,
+  type FishProfile,
+} from "./riverSpecies";
 
-export interface FishProfile {
-  especie:
-    | "bocachico"
-    | "bagre"
-    | "mojarra"
-    | "sabalo"
-    | "doncella"
-    | "pacora"
-    | "capaz";
-  largo: number;
-  alto: number;
-  profundidad: number;
-  velocidad: number;
-  fase: number;
-  rayas: number[];
-  x: number;
-}
+export type { FishProfile };
 
 function createPrng(seed: number) {
   let a = seed >>> 0;
@@ -36,25 +24,6 @@ function createPrng(seed: number) {
       return arr[Math.floor(this.random() * arr.length)];
     },
   };
-}
-
-function personaSvg(
-  camisa: string,
-  pantalon: string,
-  piel = "#c68a63",
-  camina = false,
-  sentada = false
-): string {
-  const cabeza =
-    `<circle cx="0" cy="-19" r="3.1" fill="${piel}"/>` +
-    '<path d="M-3.2 -20.4Q0 -24.2 3.2 -20.4Z" fill="#2b2622"/>';
-  const torso = `<rect x="-3.4" y="-16" width="6.8" height="9.6" rx="2.2" fill="${camisa}"/>`;
-  if (sentada) return cabeza + torso;
-  const clase = camina ? ' class="jn-pierna"' : "";
-  const piernas =
-    `<rect${clase} x="-3" y="-7" width="2.8" height="7" rx="1" fill="${pantalon}"/>` +
-    `<rect${clase} x=".2" y="-7" width="2.8" height="7" rx="1" fill="${pantalon}"/>`;
-  return cabeza + torso + piernas;
 }
 
 function ventanaSvg(
@@ -81,55 +50,36 @@ function ventanaSvg(
   );
 }
 
-function boteSvg(
-  x: number,
-  yAgua: number,
-  tipo: "a" | "b" | "c",
-  retraso: number,
-  duracion: number
-): string {
-  const motor = (mx: number, mw: number, px: number) =>
-    `<path d="M${mx} -1H${mw}V8H${mx}Z" fill="#23272b"/><path d="M${px} 8V15" stroke="#23272b" stroke-width="2"/>`;
-  let interior: string;
-  if (tipo === "a") {
-    interior =
-      '<path d="M0 0H44L40 11Q22 14.5 5 11Z" fill="#2f6f9a"/>' +
-      '<path d="M0 0H44" stroke="#eef3f5" stroke-width="1.8"/>' +
-      motor(44, 49, 46.5);
-  } else if (tipo === "b") {
-    interior =
-      `<g transform="translate(18 7)">${personaSvg("#f1f1ec", "#555", "#c68a63", false, true)}</g>` +
-      `<g transform="translate(32 7)">${personaSvg("#e3a23a", "#555", "#a8714d", false, true)}</g>` +
-      '<path d="M0 0H62L57 11Q30 15 6 11Z" fill="#3f8f6b"/>' +
-      '<path d="M0 0H62" stroke="#e9f2ec" stroke-width="1.8"/>' +
-      motor(62, 67, 64.5);
-  } else {
-    interior =
-      '<path d="M8 0L16 -15L68 -17L78 0Z" fill="#f5f3ec"/>' +
-      '<path d="M24 -15.5L21 0M40 -16L39 0M56 -16.5L57 0" stroke="#d3d0c4" stroke-width=".9"/>' +
-      '<path d="M8 0L16 -15M78 0L68 -17" stroke="#6b4b2f" stroke-width="1.4"/>' +
-      '<path d="M0 0H84L78 11Q42 15 7 11Z" fill="#c65a4b"/>' +
-      '<path d="M0 0H84" stroke="#f3dfd8" stroke-width="1.8"/>' +
-      motor(84, 90, 87);
-  }
+function garzaBlancaSvg(x: number, y: number, escala = 1, noche = false): string {
+  const pluma = noche ? "#bfd0d4" : "#f7faf8";
+  const ala = noche ? "#9bb1b8" : "#dce8e3";
+  const pico = noche ? "#b58b46" : "#e3a63b";
+  const pata = noche ? "#465852" : "#5e6e5c";
   return (
-    `<g transform="translate(${x} ${(yAgua - 5).toFixed(1)})">` +
-    `<g class="jn-bote" style="--dur:${duracion}s;--delay:${retraso}s">${interior}</g></g>`
+    `<g transform="translate(${x} ${y}) scale(${escala})">` +
+    `<path d="M-2 0v-11M2.5 0v-11" stroke="${pata}" stroke-width="1.1" stroke-linecap="round"/>` +
+    `<ellipse cx="0" cy="-14" rx="7.5" ry="4.4" transform="rotate(-12 0 -14)" fill="${pluma}"/>` +
+    `<path d="M-5 -14.5Q1 -18 6 -12.5Q0 -10.5 -5 -14.5Z" fill="${ala}"/>` +
+    `<path d="M5 -16Q9 -22 7.5 -28.5" fill="none" stroke="${pluma}" stroke-width="2.2" stroke-linecap="round"/>` +
+    `<circle cx="8" cy="-29.5" r="2.2" fill="${pluma}"/>` +
+    `<path d="M9.6 -29.8L16.5 -28.8L9.6 -28.2Z" fill="${pico}"/>` +
+    `<circle cx="8.6" cy="-29.9" r=".55" fill="#1e2a2e"/>` +
+    `</g>`
   );
 }
 
-function olaPath(
-  amplitud: number,
-  periodo: number,
-  ciclos: number,
-  espesor = 16
-): string {
-  const mitad = periodo / 2;
-  let d = `M0 0Q${(mitad / 2).toFixed(2)} ${(-amplitud).toFixed(2)} ${mitad.toFixed(2)} 0`;
-  for (let i = 0; i < ciclos * 2 - 1; i++) {
-    d += `T${(mitad * (i + 2)).toFixed(2)} 0`;
-  }
-  return `${d}V${espesor}H0Z`;
+function tortugaOrillaSvg(x: number, y: number, noche = false): string {
+  const caparazon = noche ? "#3b472b" : "#5a6b3d";
+  const borde = noche ? "#595c3c" : "#888351";
+  const piel = noche ? "#465434" : "#677c48";
+  return (
+    `<g transform="translate(${x} ${y})">` +
+    `<path d="M-10 2Q-9 -5 0 -6Q9 -5 10 2Z" fill="${caparazon}" stroke="${borde}" stroke-width="1.0"/>` +
+    `<path d="M-5 -4.5L-3.5 -1M0 -6V-1M5 -4.5L3.5 -1" stroke="${borde}" stroke-width=".65" opacity=".7"/>` +
+    `<path d="M8.5 -0.8Q12.5 -4 14.8 -3.2Q15.4 -1.2 11 0.5Z" fill="${piel}"/>` +
+    `<circle cx="13.6" cy="-2.7" r=".5" fill="#182118"/>` +
+    `</g>`
+  );
 }
 
 const escenaFijaCache = new Map<string, string>();
@@ -151,23 +101,23 @@ function escenaFijaSvg(
   if (noche) {
     cielo = ["#111b35", "#233b51", "#425a67"];
     colorNube = "#a9bac5";
-    opacidadNube = [".34", ".28"];
+    opacidadNube = [".32", ".25"];
   } else if (ambiente === "tormenta") {
     cielo = ["#243847", "#516775", "#8298a1"];
     colorNube = "#778995";
-    opacidadNube = [".98", ".82"];
+    opacidadNube = [".96", ".80"];
   } else if (ambiente === "lluvia") {
     cielo = ["#526977", "#8399a2", "#b2c2c3"];
     colorNube = "#d6dee0";
-    opacidadNube = [".92", ".78"];
+    opacidadNube = [".90", ".76"];
   } else if (ambiente === "nublado") {
     cielo = ["#5a8298", "#9eb8c3", "#d0dce0"];
     colorNube = "#f4f6f5";
-    opacidadNube = [".94", ".8"];
+    opacidadNube = [".92", ".78"];
   } else {
     cielo = ["#17527c", "#6cb0d3", "#bfe0ee"];
     colorNube = "#ffffff";
-    opacidadNube = [".85", ".7"];
+    opacidadNube = [".82", ".68"];
   }
 
   let astro = "";
@@ -186,17 +136,12 @@ function escenaFijaSvg(
       'm31-13 4-4m-34 34 4-4m0-26-4-4m34 34-4-4"/></g>';
   }
 
-  const aves =
+  const avesLejanas =
     noche || ambiente === "lluvia" || ambiente === "tormenta"
-      ? []
-      : [
-          '<g class="jn-ave" style="--dur:30s;--delay:-8s"><g transform="translate(0 84)">' +
-            '<path d="M0 0q3 -3.2 6 0q3 -3.2 6 0" fill="none" stroke="#173a52" stroke-width="1.2" ' +
-            'stroke-linecap="round"/></g></g>',
-          '<g class="jn-ave" style="--dur:38s;--delay:-21s"><g transform="translate(0 102)">' +
-            '<path d="M0 0q2.5 -2.6 5 0q2.5 -2.6 5 0" fill="none" stroke="#173a52" stroke-width="1" ' +
-            'stroke-linecap="round"/></g></g>',
-        ];
+      ? ""
+      : '<g fill="none" stroke="#1e4458" stroke-width="1.1" stroke-linecap="round" opacity=".65">' +
+        '<path d="M236 74q2.8 -2.6 5.6 0q2.8 -2.6 5.6 0"/>' +
+        '<path d="M254 66q2.2 -2.0 4.4 0q2.2 -2.0 4.4 0"/></g>';
 
   const lucesNoche = noche
     ? '<g fill="#ffd982" opacity=".95"><rect x="156" y="79" width="8" height="13"/>' +
@@ -217,19 +162,28 @@ function escenaFijaSvg(
   }
 
   let hierba = "";
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 24; i++) {
     const hx = rng.uniform(4, 336);
     const hy = rng.uniform(246, 354);
     hierba += `M${hx.toFixed(1)} ${hy.toFixed(1)}l-2.2 -6.5M${hx.toFixed(1)} ${hy.toFixed(1)}l.2 -7.5M${hx.toFixed(1)} ${hy.toFixed(1)}l2.4 -6`;
   }
 
-  const tonosPiedra = [
-    "#7e8782",
-    "#919a95",
-    "#6d7671",
-    "#a0a79f",
-    "#868f86",
-  ] as const;
+  // Natural cattails / reeds along the riverbank slope below the malecón
+  const colorJuncos = noche ? "#224d39" : "#447e4c";
+  const colorEspiga = noche ? "#3d2d20" : "#6c4b2e";
+  const juncos: string[] = [];
+  for (const jx of [26, 34, 43, 286, 295, 304]) {
+    const baseJy = 278 + (jx % 11);
+    const h = 22 + (jx % 8);
+    juncos.push(
+      `<path d="M${jx} ${baseJy}Q${jx + 2} ${baseJy - h * 0.5} ${jx + 3} ${baseJy - h}" stroke="${colorJuncos}" stroke-width="1.3" fill="none" stroke-linecap="round"/>` +
+        `<rect x="${jx + 1.8}" y="${baseJy - h + 2}" width="2.4" height="6.5" rx="1.2" fill="${colorEspiga}"/>`
+    );
+  }
+
+  const tonosPiedra = noche
+    ? ["#3b4440", "#454e4a", "#333b37", "#4c544e"]
+    : ["#7e8782", "#919a95", "#6d7671", "#a0a79f", "#868f86"];
   const piedras: string[] = [];
   let py = 364.0;
   while (py < 470) {
@@ -246,29 +200,6 @@ function escenaFijaSvg(
     }
     py += altoFila;
   }
-
-  const peldanos = 10;
-  const dx = 5.6;
-  const dy = 11.2;
-  const x0 = 172.0;
-  const y0 = 190.0;
-  const borde: Array<[number, number]> = [[x0, y0]];
-  for (let i = 0; i < peldanos; i++) {
-    borde.push([x0 + (i + 1) * dx, y0 + i * dy]);
-    borde.push([x0 + (i + 1) * dx, y0 + (i + 1) * dy]);
-  }
-  const inferior: Array<[number, number]> = [...borde]
-    .reverse()
-    .map(([bx, by]) => [bx, by + 19]);
-  const puntosEscalera = [...borde, ...inferior]
-    .map(([bx, by]) => `${bx.toFixed(1)},${by.toFixed(1)}`)
-    .join(" ");
-  let postes = "";
-  for (let i = 0; i < peldanos; i += 2) {
-    postes += `M${(x0 + (i + 1) * dx).toFixed(1)} ${(y0 + i * dy).toFixed(1)}v-15`;
-  }
-  const xf = x0 + peldanos * dx;
-  const yf = y0 + peldanos * dy;
 
   const ventanasBlancas = [166, 196, 226, 256, 286]
     .map((x) => ventanaSvg(x, 138, 14, 20, false, "#cfe0ea", "#35617b"))
@@ -317,13 +248,15 @@ function escenaFijaSvg(
       'font-family="Arial, sans-serif">NIVEL DEL RÍO</text>',
     '<text x="20" y="42" font-size="9" letter-spacing="1" fill="#dcedf6" ' +
       `font-family="Arial, sans-serif">CALAMAR · BOLÍVAR · IDEAM ${estacionCodigo}</text>`,
-    '<g class="jn-nube" style="--dur:95s;--delay:-34s;--reposo:70px"><g transform="translate(0 68)">' +
+    '<g class="jn-nube" style="--dur:110s;--delay:-34s;--reposo:70px"><g transform="translate(0 68)">' +
       `<ellipse cx="0" cy="0" rx="24" ry="6.5" fill="${colorNube}" opacity="${opacidadNube[0]}"/>` +
       `<ellipse cx="10" cy="-5" rx="14" ry="7" fill="${colorNube}" opacity="${opacidadNube[0]}"/>` +
       `<ellipse cx="-11" cy="-3" rx="12" ry="5.5" fill="${colorNube}" opacity="${opacidadNube[0]}"/></g></g>`,
-    '<g class="jn-nube" style="--dur:120s;--delay:-80s;--reposo:250px"><g transform="translate(0 94)">' +
+    '<g class="jn-nube" style="--dur:140s;--delay:-80s;--reposo:250px"><g transform="translate(0 94)">' +
       `<ellipse cx="0" cy="0" rx="19" ry="5" fill="${colorNube}" opacity="${opacidadNube[1]}"/>` +
       `<ellipse cx="8" cy="-4" rx="11" ry="5.5" fill="${colorNube}" opacity="${opacidadNube[1]}"/></g></g>`,
+    avesLejanas,
+    // Calamar historic city buildings & waterfront
     '<rect x="146" y="64" width="58" height="124" fill="#7c6a63"/>' +
       '<rect x="143" y="59" width="64" height="7" fill="#cdc4b5"/>' +
       '<path d="M152 70v118M168 70v118M184 70v118M198 70v118" stroke="#000" stroke-opacity=".08" stroke-width="3"/>' +
@@ -357,6 +290,7 @@ function escenaFijaSvg(
       '<path d="M214 169L211 186M226 169L225 186M238 169L238 186M250 169L252 186" ' +
       'stroke="#f1d3c3" stroke-width="1.6" opacity=".7"/>' +
       '<path d="M82 186L86 175H112L116 186Z" fill="#3b6fb0"/>',
+    // Malecón seawall
     '<rect x="0" y="186" width="340" height="4" fill="#f1ebdc"/>' +
       '<rect x="0" y="190" width="340" height="46" fill="url(#jn-muro)"/>' +
       '<path d="M42 190v46M84 190v46M126 190v46M168 190v46M210 190v46M252 190v46M294 190v46" ' +
@@ -367,6 +301,7 @@ function escenaFijaSvg(
       '<rect x="58" y="210" width="46" height="10" rx="1" fill="#2d6b9b" opacity=".85"/>' +
       '<path d="M110 212h30M110 217h22" stroke="#9c9786" stroke-width="2"/>' +
       '<rect x="0" y="236" width="340" height="5" fill="#a89e88"/>',
+    // Natural bank slope & ecological details
     '<rect x="0" y="241" width="340" height="123" fill="url(#jn-talud)"/>' +
       '<path d="M60 242q4 30 -2 60q-4 30 4 60M150 242q-4 34 2 66q4 28 -2 54M262 242q5 28 -1 58q-5 32 3 64" ' +
       'fill="none" stroke="#4f3d22" stroke-opacity=".12" stroke-width="4" stroke-linecap="round"/>' +
@@ -374,6 +309,8 @@ function escenaFijaSvg(
       'fill="none" stroke="#5e4a2a" stroke-opacity=".2" stroke-width="1.4"/>' +
       '<path d="M226 306Q272 297 340 293" fill="none" stroke="#dccba3" stroke-width="5" ' +
       'stroke-linecap="round" opacity=".55"/>',
+    `<path d="M204 284Q230 278 256 283" stroke="${noche ? "#3b2f23" : "#6b5239"}" stroke-width="5.2" stroke-linecap="round" fill="none"/>`,
+    juncos.join(""),
     grava.join(""),
     `<path d="${hierba}" stroke="#4d8a3a" stroke-width="1.1" stroke-linecap="round" fill="none"/>`,
     '<text x="46" y="288" font-size="9" font-weight="700" letter-spacing="2" fill="#fff8e6" ' +
@@ -386,10 +323,6 @@ function escenaFijaSvg(
       '<circle cx="52" cy="482" r="2.4" fill="#b19a78" opacity=".7"/>' +
       '<circle cx="171" cy="488" r="3" fill="#a08a69" opacity=".7"/>' +
       '<circle cx="268" cy="480" r="2.2" fill="#b19a78" opacity=".7"/>',
-    `<polygon points="${puntosEscalera}" fill="#d6cfba" stroke="#7a7260" stroke-width=".9" stroke-linejoin="round"/>` +
-      `<path d="M${x0.toFixed(1)} ${(y0 - 15).toFixed(1)}L${xf.toFixed(1)} ${(yf - 15).toFixed(1)}${postes}" stroke="#2f414c" ` +
-      'stroke-width="1.5" fill="none" stroke-linecap="round"/>',
-    aves.join(""),
   ].join("\n");
 
   escenaFijaCache.set(cacheKey, result);
@@ -398,14 +331,14 @@ function escenaFijaSvg(
 
 function tarullasSvg(ySuperficie: number): string {
   const plants: Array<[number, number, number]> = [
-    [72, 0.82, 0],
-    [182, 1.0, -1.4],
-    [292, 0.72, -2.2],
+    [72, 0.8, 0],
+    [182, 0.96, -3.4],
+    [292, 0.72, -5.8],
   ];
   return plants
     .map(
       ([x, escala, demora]) =>
-        `<g transform="translate(${x} ${(ySuperficie + 2).toFixed(1)}) scale(${escala})">` +
+        `<g transform="translate(${x} ${(ySuperficie + 1.5).toFixed(1)}) scale(${escala})">` +
         `<g class="jn-tarulla" style="--delay:${demora}s">` +
         '<path d="M0 5q-5 8 -3 20m3-20q5 9 8 19m-8-19q-1 10 -1 22" ' +
         'fill="none" stroke="#9ab98a" stroke-width="1" opacity=".8"/>' +
@@ -434,7 +367,6 @@ export function buildRiverGaugeData(params: {
     umbrales,
     ambiente,
     noche,
-    vientoKmh,
     estacionCodigo,
     nivelReferenciaCm,
     nivelMurallaCm,
@@ -448,116 +380,30 @@ export function buildRiverGaugeData(params: {
   const yS = posicion(Math.max(0.0, Math.min(nivelCm, nivelMurallaCm * 1.12)));
   const sobreMuralla = nivelCm > nivelMurallaCm;
 
-  const gente: string[] = [];
-  if (!noche && yS > 192) {
-    gente.push(
-      `<g transform="translate(160 186)"><g class="jn-respira">${personaSvg("#26394a", "#1d2a35")}</g></g>`
-    );
+  // Riparian birds/turtles perched naturally on the lower bank when exposed above water
+  const faunaRibera: string[] = [];
+  if (yS > 282) {
+    faunaRibera.push(garzaBlancaSvg(34, 276, 0.9, noche));
   }
-  if (!noche && yS > 303) {
-    gente.push(
-      `<g transform="translate(262 299)"><g class="jn-camina">${personaSvg("#3f7fc0", "#59606a", "#c68a63", true)}</g></g>`
-    );
+  if (yS > 286) {
+    faunaRibera.push(tortugaOrillaSvg(232, 279, noche));
   }
 
-  const botes = noche
-    ? ""
-    : ([
-        [42, "a", -0.4, 3.7],
-        [96, "b", -1.9, 4.3],
-        [160, "c", -3.1, 4.9],
-      ] as Array<[number, "a" | "b" | "c", number, number]>)
-        .map(([x, tipo, retraso, duracion]) =>
-          boteSvg(x, yS, tipo, retraso, duracion)
-        )
-        .join("");
+  const fishProfiles: FishProfile[] = generateRiverFishProfiles(29037020);
 
-  const perfilesBase: Array<Omit<FishProfile, "x">> = [
-    {
-      especie: "bocachico",
-      largo: 43,
-      alto: 19,
-      profundidad: 68,
-      velocidad: 1.0,
-      fase: 0.15,
-      rayas: [-0.45, -0.15, 0.15, 0.42],
-    },
-    {
-      especie: "bagre",
-      largo: 47,
-      alto: 18,
-      profundidad: 51,
-      velocidad: 0.88,
-      fase: 0.55,
-      rayas: [],
-    },
-    {
-      especie: "mojarra",
-      largo: 36,
-      alto: 22,
-      profundidad: 35,
-      velocidad: 1.12,
-      fase: 0.8,
-      rayas: [-0.28, 0.05, 0.34],
-    },
-    {
-      especie: "sabalo",
-      largo: 46,
-      alto: 17,
-      profundidad: 20,
-      velocidad: 1.08,
-      fase: 0.35,
-      rayas: [],
-    },
-    {
-      especie: "doncella",
-      largo: 49,
-      alto: 18,
-      profundidad: 78,
-      velocidad: 0.82,
-      fase: 0.65,
-      rayas: [-0.4, -0.08, 0.26],
-    },
-    {
-      especie: "pacora",
-      largo: 40,
-      alto: 23,
-      profundidad: 45,
-      velocidad: 0.96,
-      fase: 0.42,
-      rayas: [-0.3, 0.24],
-    },
-    {
-      especie: "capaz",
-      largo: 38,
-      alto: 16,
-      profundidad: 60,
-      velocidad: 1.18,
-      fase: 0.9,
-      rayas: [],
-    },
-  ];
-  const fishProfiles: FishProfile[] = perfilesBase.map((pez, indice) => ({
-    ...pez,
-    x: 58 + indice * 34,
-  }));
-
-  const baseBurbuja = yFondo - 4;
+  const baseBurbuja = yFondo - 6;
   const sube = baseBurbuja - yS;
   const burbujas: string[] = [];
-  if (sube > 10) {
+  if (sube > 16) {
     const specs: Array<[number, number, number, number]> = [
-      [58, 2.2, 5.5, 0],
-      [112, 1.6, 4.4, 1.7],
-      [176, 2.4, 6.2, 3.1],
-      [236, 1.8, 4.9, 0.8],
-      [296, 2.0, 5.8, 2.6],
-      [140, 1.4, 4.1, 3.9],
+      [88, 1.5, 7.5, 0.4],
+      [168, 1.8, 8.8, 3.2],
+      [252, 1.4, 7.1, 5.1],
     ];
     for (const [bx, radio, duracion, retraso] of specs) {
       burbujas.push(
         `<circle class="jn-burbuja" cx="${bx}" cy="${baseBurbuja.toFixed(0)}" r="${radio}" fill="none" ` +
-          `stroke="#dcf6fa" stroke-width="1" style="--sube:${sube.toFixed(0)}px;--dur:${duracion}s;--delay:-${retraso}s"/>`
+          `stroke="#d4f3f5" stroke-width=".9" style="--sube:${sube.toFixed(0)}px;--dur:${duracion}s;--delay:-${retraso}s"/>`
       );
     }
   }
@@ -578,59 +424,46 @@ export function buildRiverGaugeData(params: {
     if (ambiente === "tormenta") {
       relampago =
         '<path class="jn-relampago" d="m292 45-12 22h9l-5 17 20-26h-10l7-13Z" ' +
-        'fill="#fff5c4" opacity=".8"/>';
+        'fill="#fff5c4" opacity=".75"/>';
     }
   }
   const lluviaSvg = `<g aria-hidden="true">${gotasLluvia.join("")}${relampago}</g>`;
 
   const coloresAguaDia: Record<AmbienteTipo, [string, string, string]> = {
-    despejado: ["#2aa3b4", "#127a91", "#0c4057"],
-    nublado: ["#3793a0", "#176d80", "#103e51"],
-    lluvia: ["#448c98", "#1a6274", "#123b4c"],
-    tormenta: ["#397987", "#164f63", "#0c2e43"],
+    despejado: ["#2b98a3", "#137184", "#0c3c4c"],
+    nublado: ["#368c95", "#176778", "#0f3a48"],
+    lluvia: ["#41848f", "#195c6c", "#103744"],
+    tormenta: ["#38737f", "#154b5c", "#0c2b3c"],
   };
   const coloresAguaNoche: Record<AmbienteTipo, [string, string, string]> = {
-    despejado: ["#1e7688", "#104d68", "#092b42"],
-    nublado: ["#286b79", "#124459", "#092b40"],
-    lluvia: ["#285d6e", "#103b53", "#08253a"],
-    tormenta: ["#204d61", "#0d344a", "#071f34"],
+    despejado: ["#1b6d7c", "#0f485e", "#08283b"],
+    nublado: ["#256470", "#114153", "#082839"],
+    lluvia: ["#265766", "#0f384d", "#072234"],
+    tormenta: ["#1d495a", "#0d3245", "#061e2f"],
   };
   const [aguaSuperficie, aguaMedia, aguaFondo] = (
     noche ? coloresAguaNoche : coloresAguaDia
   )[ambiente];
 
-  let destellos = "";
-  for (let k = 0; k < 8; k++) {
-    destellos += `M${k * 85 + 10} 9h14M${k * 85 + 48} 17h9M${k * 85 + 28} 27h11`;
-  }
   const agua =
     '<defs><linearGradient id="jn-agua" gradientUnits="userSpaceOnUse" ' +
     `x1="0" y1="${yS.toFixed(1)}" x2="0" y2="500">` +
-    `<stop offset="0" stop-color="${aguaSuperficie}" stop-opacity=".52"/>` +
-    `<stop offset=".16" stop-color="${aguaSuperficie}" stop-opacity=".62"/>` +
-    `<stop offset=".52" stop-color="${aguaMedia}" stop-opacity=".76"/>` +
+    `<stop offset="0" stop-color="${aguaSuperficie}" stop-opacity=".46"/>` +
+    `<stop offset=".18" stop-color="${aguaSuperficie}" stop-opacity=".58"/>` +
+    `<stop offset=".54" stop-color="${aguaMedia}" stop-opacity=".75"/>` +
     `<stop offset="1" stop-color="${aguaFondo}" stop-opacity=".90"/></linearGradient>` +
+    '<linearGradient id="jn-reflejo-copa" gradientUnits="userSpaceOnUse" ' +
+    `x1="0" y1="${yS.toFixed(1)}" x2="0" y2="${(yS + 42).toFixed(1)}">` +
+    `<stop offset="0" stop-color="${noche ? "#1a3c2f" : "#3b764e"}" stop-opacity="${noche ? ".24" : ".28"}"/>` +
+    '<stop offset="1" stop-color="#194d4b" stop-opacity="0"/></linearGradient>' +
     '<linearGradient id="jn-brillo-sup" gradientUnits="userSpaceOnUse" ' +
-    `x1="0" y1="${yS.toFixed(1)}" x2="0" y2="${(yS + 26).toFixed(1)}">` +
-    `<stop offset="0" stop-color="#ffffff" stop-opacity="${noche ? ".14" : ".28"}"/>` +
+    `x1="0" y1="${yS.toFixed(1)}" x2="0" y2="${(yS + 20).toFixed(1)}">` +
+    `<stop offset="0" stop-color="#ffffff" stop-opacity="${noche ? ".09" : ".18"}"/>` +
     '<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs>' +
     `<rect x="0" y="${yS.toFixed(1)}" width="340" height="${(500 - yS).toFixed(1)}" fill="url(#jn-agua)"/>` +
-    `<rect x="0" y="${yS.toFixed(1)}" width="340" height="26" fill="url(#jn-brillo-sup)"/>` +
-    `<g transform="translate(0 ${yS.toFixed(1)})"><g class="jn-ola" style="--dur:16s">` +
-    `<path d="${destellos}" stroke="#ffffff" stroke-opacity="${noche ? ".18" : ".32"}" stroke-width="1" ` +
-    'stroke-linecap="round" fill="none"/></g></g>';
-
-  const factorViento = Math.max(0.55, 1 - Math.min(Math.max(vientoKmh, 0), 55) / 75);
-  const duracionOlaAtras = 13 * factorViento;
-  const duracionOlaFrente = 8 * factorViento;
-  const olaAtras =
-    `<g transform="translate(0 ${yS.toFixed(1)})"><g class="jn-ola" ` +
-    `style="--dur:${duracionOlaAtras.toFixed(1)}s;--delay:-4s">` +
-    `<path d="${olaPath(2.4, 68, 10, 12)}" fill="${aguaSuperficie}" opacity=".34"/></g></g>`;
-  const olaFrente =
-    `<g transform="translate(0 ${yS.toFixed(1)})"><g class="jn-ola" style="--dur:${duracionOlaFrente.toFixed(1)}s">` +
-    `<path d="${olaPath(3.2, 85, 8, 14)}" fill="${aguaSuperficie}" fill-opacity=".28" ` +
-    `stroke="#e8fbff" stroke-opacity="${noche ? ".42" : ".72"}" stroke-width="1.2"/></g></g>`;
+    `<path d="M0 ${yS.toFixed(1)}H340V${(yS + 24).toFixed(1)}Q292 ${(yS + 40).toFixed(1)} 252 ${(yS + 26).toFixed(1)}T156 ${(yS + 20).toFixed(1)}T68 ${(yS + 32).toFixed(1)}T0 ${(yS + 24).toFixed(1)}Z" fill="url(#jn-reflejo-copa)"/>` +
+    `<rect x="0" y="${yS.toFixed(1)}" width="340" height="20" fill="url(#jn-brillo-sup)"/>` +
+    `<path d="M0 ${yS.toFixed(1)}Q85 ${(yS - 0.35).toFixed(2)} 170 ${(yS + 0.25).toFixed(2)}T340 ${yS.toFixed(1)}" fill="none" stroke="#e4f7f8" stroke-opacity="${noche ? ".26" : ".48"}" stroke-width="0.9"/>`;
 
   const marcas: string[] = [];
   for (let metro = 0; metro <= 10; metro++) {
@@ -743,13 +576,10 @@ export function buildRiverGaugeData(params: {
   const sceneHtml = [
     escenaFijaSvg(ambiente, noche, estacionCodigo),
     lluviaSvg,
-    gente.join(""),
+    faunaRibera.join(""),
     agua,
-    olaAtras,
-    botes,
     tarullasSvg(yS),
     burbujas.join(""),
-    olaFrente,
   ].join("\n");
 
   const overlayHtml = [

@@ -54,7 +54,7 @@ export interface ReadingMeta {
   cambioTexto: string;
   edadDias: number;
   fuente: string;
-  estadoPeces: "calm" | "uncomfortable" | "scared";
+  estadoPeces: "calm" | "scared";
   estadoPecesTexto: string;
 }
 

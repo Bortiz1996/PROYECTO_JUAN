@@ -14,91 +14,50 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { ThresholdsInfo } from "../../../types";
 import type { AmbienteTipo } from "../../../utils/format";
-import { buildRiverGaugeData, type FishProfile } from "../../../utils/riverScene";
+import { buildRiverFishEntity, type FishEntity } from "../../../utils/riverFishMesh";
+import {
+  RiverFoodManager,
+  type FoodPiece,
+  type NaturalFoodType,
+} from "../../../utils/riverFoodSystem";
+import { buildRiverHabitat } from "../../../utils/riverHabitatMesh";
+import {
+  buildRiverManateeEntity,
+  type ManateeEntity,
+} from "../../../utils/riverManateeMesh";
+import { buildRiverGaugeData } from "../../../utils/riverScene";
+import type { FishSpeciesId } from "../../../utils/riverSpecies";
+import {
+  buildRiverTurtleEntity,
+  type TurtleEntity,
+} from "../../../utils/riverTurtleMesh";
+import {
+  WATER_BACK_FRAGMENT_SHADER,
+  WATER_FORE_FRAGMENT_SHADER,
+  WATER_VERTEX_SHADER,
+  createParticleTexture,
+  createWaterNormalMap,
+} from "../../../utils/riverWaterShaders";
 
-interface FeedTarget {
-  x: number;
-  y: number;
-  hasta: number;
-  llegada?: number;
-  wrap: boolean;
+const SCHOOLING_SPECIES = new Set<FishSpeciesId>([
+  "bocachico",
+  "arenca",
+  "sabalo",
+  "mojarra",
+  "dorada",
+  "pacora",
+]);
+
+interface FishBrainState {
+  species: FishSpeciesId;
+  isSchooling: boolean;
+  facingDir: 1 | -1;
+  exploreMode: "cruise" | "browse";
+  modeTimer: number;
+  targetOffsetY: number;
+  biteCooldown: number;
+  postMealBoost: number;
 }
-
-interface FishEntity {
-  group: THREE.Group;
-  geometry: THREE.BufferGeometry;
-  baseVertices: Float32Array;
-  vertices: THREE.BufferAttribute;
-  tail: THREE.Object3D;
-  dorsal: THREE.Object3D;
-  pectorals: THREE.Object3D[];
-  baseY: number;
-  height: number;
-  length: number;
-  minY: number;
-  maxY: number;
-  phase: number;
-  speedFactor: number;
-  target: FeedTarget | null;
-  wrapGhost: THREE.Group | null;
-}
-
-const _feedObjective = new THREE.Vector3();
-
-const PALETAS: Record<
-  FishProfile["especie"],
-  { cuerpo: number; lomo: number; vientre: number; aleta: number; raya: number }
-> = {
-  bocachico: {
-    cuerpo: 0xe7b34f,
-    lomo: 0xb86c35,
-    vientre: 0xf6e3b2,
-    aleta: 0xc77a32,
-    raya: 0xa65e30,
-  },
-  bagre: {
-    cuerpo: 0x79aba2,
-    lomo: 0x376b70,
-    vientre: 0xc9ded2,
-    aleta: 0x4b7f82,
-    raya: 0x426f70,
-  },
-  mojarra: {
-    cuerpo: 0xe89b5d,
-    lomo: 0x9b5438,
-    vientre: 0xffe3b1,
-    aleta: 0xdf7148,
-    raya: 0xa75e43,
-  },
-  sabalo: {
-    cuerpo: 0xa7c7c7,
-    lomo: 0x567b88,
-    vientre: 0xedf0dd,
-    aleta: 0x719b9d,
-    raya: 0x638d95,
-  },
-  doncella: {
-    cuerpo: 0xb3a184,
-    lomo: 0x665543,
-    vientre: 0xead8b9,
-    aleta: 0x806950,
-    raya: 0x665543,
-  },
-  pacora: {
-    cuerpo: 0xafc7b6,
-    lomo: 0x637c74,
-    vientre: 0xe7e6cc,
-    aleta: 0xcf8b4e,
-    raya: 0x718c7e,
-  },
-  capaz: {
-    cuerpo: 0x9bb9b4,
-    lomo: 0x526b70,
-    vientre: 0xe8eee1,
-    aleta: 0x758d89,
-    raya: 0x5c7776,
-  },
-};
 
 function detectSoftwareWebGL(): boolean {
   try {
@@ -115,291 +74,12 @@ function detectSoftwareWebGL(): boolean {
   }
 }
 
-function createParticleTexture(): THREE.CanvasTexture {
-  const size = 32;
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d")!;
-  const grad = ctx.createRadialGradient(
-    size / 2,
-    size / 2,
-    0,
-    size / 2,
-    size / 2,
-    size / 2
-  );
-  grad.addColorStop(0, "rgba(235, 252, 255, 0.95)");
-  grad.addColorStop(0.45, "rgba(180, 238, 245, 0.45)");
-  grad.addColorStop(1, "rgba(120, 210, 225, 0.0)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+function shortestAngleDelta(target: number, current: number): number {
+  return Math.atan2(Math.sin(target - current), Math.cos(target - current));
 }
-
-function createWaterNormalMap(size = 256): THREE.DataTexture {
-  const heightField = new Float32Array(size * size);
-  const twoPi = Math.PI * 2;
-  for (let y = 0; y < size; y++) {
-    const v = y / size;
-    for (let x = 0; x < size; x++) {
-      const u = x / size;
-      const h =
-        Math.sin(twoPi * (u * 2 + v * 1) + 0.4) * 0.34 +
-        Math.cos(twoPi * (u * 3 - v * 2) + 1.1) * 0.25 +
-        Math.sin(twoPi * (u * 5 + v * 3) + 2.3) * 0.18 +
-        Math.cos(twoPi * (u * 7 - v * 5) + 0.7) * 0.12 +
-        Math.sin(twoPi * (u * 11 + v * 8) + 1.9) * 0.07 +
-        Math.cos(twoPi * (u * 14 - v * 11)) * 0.04;
-      heightField[y * size + x] = h;
-    }
-  }
-
-  const data = new Uint8Array(size * size * 4);
-  const strength = 2.6;
-  for (let y = 0; y < size; y++) {
-    const yPrev = (y - 1 + size) % size;
-    const yNext = (y + 1) % size;
-    for (let x = 0; x < size; x++) {
-      const xPrev = (x - 1 + size) % size;
-      const xNext = (x + 1) % size;
-
-      const dX =
-        (heightField[y * size + xNext] - heightField[y * size + xPrev]) *
-        strength;
-      const dY =
-        (heightField[yNext * size + x] - heightField[yPrev * size + x]) *
-        strength;
-
-      const len = Math.hypot(-dX, -dY, 1.0);
-      const nx = -dX / len;
-      const ny = -dY / len;
-      const nz = 1.0 / len;
-
-      const idx = (y * size + x) * 4;
-      data[idx] = Math.round((nx * 0.5 + 0.5) * 255);
-      data[idx + 1] = Math.round((ny * 0.5 + 0.5) * 255);
-      data[idx + 2] = Math.round((nz * 0.5 + 0.5) * 255);
-      data[idx + 3] = 255;
-    }
-  }
-
-  const normalMap = new THREE.DataTexture(
-    data,
-    size,
-    size,
-    THREE.RGBAFormat,
-    THREE.UnsignedByteType
-  );
-  normalMap.wrapS = THREE.RepeatWrapping;
-  normalMap.wrapT = THREE.RepeatWrapping;
-  normalMap.colorSpace = THREE.NoColorSpace;
-  normalMap.generateMipmaps = true;
-  normalMap.minFilter = THREE.LinearMipmapLinearFilter;
-  normalMap.magFilter = THREE.LinearFilter;
-  normalMap.needsUpdate = true;
-  return normalMap;
-}
-
-const WATER_VERTEX_SHADER = /* glsl */ `
-  varying vec2 vUv;
-  varying vec2 vScenePos;
-  void main() {
-    vUv = uv;
-    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-    vScenePos = worldPos.xy;
-    gl_Position = projectionMatrix * viewMatrix * worldPos;
-  }
-`;
-
-const WATER_BACK_FRAGMENT_SHADER = /* glsl */ `
-  precision highp float;
-  uniform float uTime;
-  uniform float uSurfaceSceneY;
-  uniform float uWindFactor;
-  uniform float uNight;
-  uniform float uStorm;
-  uniform float uRain;
-  uniform vec2 uRipplePos;
-  uniform float uRippleAge;
-  uniform sampler2D uNormalMap;
-  varying vec2 vUv;
-  varying vec2 vScenePos;
-
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-  }
-
-  float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(
-      mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
-      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-      u.y
-    );
-  }
-
-  vec3 sampleFlowNormal(vec2 scenePos, float t, float wind) {
-    float flowSpeed = 0.032 + wind * 0.028;
-    vec2 uv1 = scenePos * vec2(0.0055, 0.011) - vec2(t * flowSpeed, t * 0.006);
-    vec2 uv2 = scenePos * vec2(0.0085, 0.016) - vec2(t * (flowSpeed * 1.45), -t * 0.009);
-    vec3 n1 = texture2D(uNormalMap, uv1).xyz * 2.0 - 1.0;
-    vec3 n2 = texture2D(uNormalMap, uv2).xyz * 2.0 - 1.0;
-    return normalize(vec3(n1.xy * 0.65 + n2.xy * 0.5, 1.0));
-  }
-
-  float causticPattern(vec2 p, float t) {
-    vec2 p1 = p * vec2(0.036, 0.055) + vec2(-t * 0.22, t * 0.14);
-    vec2 p2 = p * vec2(0.048, 0.032) + vec2(t * 0.18, -t * 0.19);
-    float w1 = sin(p1.x * 3.1 + sin(p1.y * 2.7 + t * 1.1) * 1.4);
-    float w2 = sin(p2.y * 3.4 + sin(p2.x * 2.5 - t * 0.9) * 1.3);
-    float w3 = cos((p1.x + p2.y) * 2.2 - t * 1.35);
-    float ridge = 1.0 - abs(w1 + w2 * 0.75 + w3 * 0.45) * 0.48;
-    return pow(clamp(ridge, 0.0, 1.0), 4.2);
-  }
-
-  void main() {
-    float x = vScenePos.x;
-    float y = vScenePos.y;
-
-    vec3 flowNormal = sampleFlowNormal(vScenePos, uTime, uWindFactor);
-
-    float waveSpeed = 1.1 + uWindFactor * 1.25;
-    float waveAmp = 2.1 + uWindFactor * 1.4;
-    float wave1 = sin(x * 0.074 - uTime * waveSpeed) * waveAmp;
-    float wave2 = sin(x * 0.135 + uTime * (waveSpeed * 0.72)) * (waveAmp * 0.45);
-    float wave3 = cos(x * 0.038 - uTime * (waveSpeed * 0.45)) * 1.1;
-    float surfaceY = uSurfaceSceneY + wave1 + wave2 + wave3 + flowNormal.y * 0.85;
-
-    float rippleDist = length(vec2(x, y) - uRipplePos);
-    float rippleEnv = exp(-uRippleAge * 1.15) * step(0.0, uRippleAge) * step(uRippleAge, 3.0);
-    float rippleWave = sin(rippleDist * 0.26 - uRippleAge * 9.5) * exp(-rippleDist * 0.022) * rippleEnv;
-    surfaceY += rippleWave * 2.2 * smoothstep(45.0, 0.0, abs(y - uSurfaceSceneY));
-
-    float depth = surfaceY - y;
-    if (depth < -1.0) discard;
-    float surfaceEdge = smoothstep(-0.8, 1.8, depth);
-
-    float waterSpan = max(40.0, surfaceY - (-250.0));
-    float normDepth = clamp(depth / waterSpan, 0.0, 1.0);
-
-    vec3 shallowDay = mix(vec3(0.19, 0.66, 0.72), vec3(0.24, 0.56, 0.61), uStorm * 0.75 + uRain * 0.35);
-    vec3 midDay     = mix(vec3(0.07, 0.44, 0.54), vec3(0.10, 0.35, 0.43), uStorm * 0.8 + uRain * 0.3);
-    vec3 deepDay    = mix(vec3(0.03, 0.20, 0.29), vec3(0.04, 0.16, 0.24), uStorm * 0.8);
-
-    vec3 shallowNight = vec3(0.09, 0.38, 0.47);
-    vec3 midNight     = vec3(0.04, 0.22, 0.32);
-    vec3 deepNight    = vec3(0.02, 0.10, 0.18);
-
-    vec3 cShallow = mix(shallowDay, shallowNight, uNight);
-    vec3 cMid     = mix(midDay, midNight, uNight);
-    vec3 cDeep    = mix(deepDay, deepNight, uNight);
-
-    vec3 baseColor = normDepth < 0.45
-      ? mix(cShallow, cMid, normDepth / 0.45)
-      : mix(cMid, cDeep, (normDepth - 0.45) / 0.55);
-
-    vec3 lightDir = normalize(vec3(-0.35, 0.72, 0.60));
-    float ndotl = max(0.0, dot(flowNormal, lightDir));
-    float flowSpecular = pow(ndotl, 9.0) * exp(-normDepth * 1.45) * (1.0 - uStorm * 0.65);
-    vec3 specTint = mix(vec3(0.80, 0.98, 1.0), vec3(0.45, 0.74, 0.88), uNight);
-    baseColor += specTint * flowSpecular * mix(0.26, 0.11, uNight);
-
-    float rayAngleCoord = (x + 170.0) * 0.82 - depth * 0.38 + flowNormal.x * 14.0;
-    float ray1 = sin(rayAngleCoord * 0.045 + uTime * 0.35 + noise(vec2(x * 0.02, uTime * 0.15)) * 1.4);
-    float ray2 = sin(rayAngleCoord * 0.088 - uTime * 0.24 + 1.7);
-    float godRay = pow(clamp(ray1 * 0.55 + ray2 * 0.45, 0.0, 1.0), 2.4);
-    float rayAtten = exp(-normDepth * 2.1) * (1.0 - uStorm * 0.72) * (1.0 - uRain * 0.42);
-    vec3 rayColor = mix(vec3(0.75, 0.96, 0.98), vec3(0.45, 0.72, 0.88), uNight);
-    baseColor += rayColor * godRay * rayAtten * mix(0.22, 0.09, uNight);
-
-    vec2 causticCoord = vec2(x + depth * 0.18, y * 1.35) + flowNormal.xy * 18.0;
-    float caust = causticPattern(causticCoord, uTime * (0.85 + uWindFactor * 0.45));
-    float caustFade = exp(-normDepth * 2.4) * (1.0 - uStorm * 0.65);
-    vec3 caustColor = mix(vec3(0.62, 0.95, 0.96), vec3(0.35, 0.68, 0.82), uNight);
-    baseColor += caustColor * caust * caustFade * mix(0.32, 0.14, uNight);
-
-    float turbidity = noise(vec2(x * 0.028 - uTime * 0.24, y * 0.032 + uTime * 0.05));
-    baseColor += (turbidity - 0.5) * vec3(0.035, 0.055, 0.045) * (0.5 + 0.5 * normDepth);
-
-    float meniscus = exp(-depth * 0.22);
-    float shimmer = pow(max(0.0, sin(x * 0.16 - uTime * 2.6 + wave2 * 2.0 + flowNormal.x * 1.6)), 6.0);
-    vec3 rimColor = mix(vec3(0.84, 0.98, 1.0), vec3(0.55, 0.80, 0.92), uNight);
-    baseColor += rimColor * meniscus * (0.20 + shimmer * 0.24) * (1.0 - uStorm * 0.45);
-
-    baseColor += vec3(0.55, 0.92, 0.96) * max(0.0, rippleWave) * 0.38;
-
-    if (uRain > 0.1) {
-      float splash = pow(noise(vec2(x * 0.35, floor(uTime * 7.0) * 1.7)), 9.0) * meniscus;
-      baseColor += vec3(0.75, 0.92, 0.96) * splash * uRain * 0.85;
-    }
-
-    float alpha = mix(0.34, 0.72, pow(normDepth, 0.8)) * surfaceEdge;
-    alpha = clamp(alpha + meniscus * 0.16, 0.0, 0.82);
-
-    gl_FragColor = vec4(baseColor, alpha);
-  }
-`;
-
-const WATER_FORE_FRAGMENT_SHADER = /* glsl */ `
-  precision highp float;
-  uniform float uTime;
-  uniform float uSurfaceSceneY;
-  uniform float uWindFactor;
-  uniform float uNight;
-  uniform float uStorm;
-  uniform vec2 uRipplePos;
-  uniform float uRippleAge;
-  uniform sampler2D uNormalMap;
-  varying vec2 vScenePos;
-
-  float causticLight(vec2 p, float t) {
-    vec2 p1 = p * vec2(0.032, 0.05) + vec2(-t * 0.25, t * 0.12);
-    vec2 p2 = p * vec2(0.044, 0.03) + vec2(t * 0.19, -t * 0.17);
-    float w1 = sin(p1.x * 3.0 + sin(p1.y * 2.5 + t) * 1.3);
-    float w2 = cos(p2.y * 3.2 - sin(p2.x * 2.3 - t * 0.8) * 1.2);
-    return pow(clamp(1.0 - abs(w1 + w2) * 0.55, 0.0, 1.0), 4.5);
-  }
-
-  void main() {
-    float x = vScenePos.x;
-    float y = vScenePos.y;
-    float waveSpeed = 1.1 + uWindFactor * 1.25;
-    float waveAmp = 2.1 + uWindFactor * 1.4;
-    float surfaceY = uSurfaceSceneY + sin(x * 0.074 - uTime * waveSpeed) * waveAmp;
-    float depth = surfaceY - y;
-    if (depth < 0.0) discard;
-
-    float waterSpan = max(40.0, surfaceY - (-250.0));
-    float normDepth = clamp(depth / waterSpan, 0.0, 1.0);
-
-    float flowSpeed = 0.036 + uWindFactor * 0.03;
-    vec2 nUv = vScenePos * vec2(0.006, 0.012) - vec2(uTime * flowSpeed, uTime * 0.005);
-    vec2 flowPerturb = texture2D(uNormalMap, nUv).xy * 2.0 - 1.0;
-
-    float c = causticLight(vec2(x + depth * 0.14, y * 1.25) + flowPerturb * 14.0, uTime * 0.9);
-    float fade = exp(-normDepth * 2.2) * (1.0 - uStorm * 0.65) * smoothstep(0.0, 4.0, depth);
-    float glint = pow(max(0.0, flowPerturb.x * 0.6 + flowPerturb.y * 0.8), 5.0) * exp(-normDepth * 1.8) * 0.10;
-
-    float rippleDist = length(vec2(x, y) - uRipplePos);
-    float rippleEnv = exp(-uRippleAge * 1.3) * step(0.0, uRippleAge) * step(uRippleAge, 3.0);
-    float rippleRing = pow(max(0.0, sin(rippleDist * 0.30 - uRippleAge * 10.0)), 4.0)
-      * exp(-rippleDist * 0.024) * rippleEnv;
-
-    vec3 tint = mix(vec3(0.65, 0.96, 1.0), vec3(0.40, 0.72, 0.88), uNight);
-    float intensity = (c * fade * mix(0.16, 0.07, uNight)) + glint + rippleRing * 0.25;
-
-    gl_FragColor = vec4(tint * intensity, clamp(intensity, 0.0, 0.45));
-  }
-`;
 
 @Component({
   selector: "app-river-gauge",
-  standalone: true,
   template: `
     <div class="gauge-feed-wrap">
       <div class="gauge-panel" #gaugePanel>
@@ -411,7 +91,7 @@ const WATER_FORE_FRAGMENT_SHADER = /* glsl */ `
           role="group"
           [attr.aria-label]="ariaDescription"
         >
-          <title>Hábitat del río Magdalena en Calamar</title>
+          <title>Ecosistema natural del río Magdalena en Calamar</title>
           <g #sceneGroup></g>
         </svg>
         <div
@@ -435,9 +115,6 @@ const WATER_FORE_FRAGMENT_SHADER = /* glsl */ `
         >
           Alimentar peces
         </button>
-        <span class="gauge-feed-hint">
-          O toca el agua en la escena ({{ estadoPecesTexto }})
-        </span>
       </div>
     </div>
   `,
@@ -448,9 +125,7 @@ export class RiverGaugeComponent
 {
   @Input({ required: true }) nivelCm = 0;
   @Input({ required: true }) umbrales!: ThresholdsInfo;
-  @Input({ required: true }) estadoPeces: "calm" | "uncomfortable" | "scared" =
-    "calm";
-  @Input({ required: true }) estadoPecesTexto = "tranquilos";
+  @Input({ required: true }) estadoPeces: "calm" | "scared" = "calm";
   @Input({ required: true }) ambiente: AmbienteTipo = "despejado";
   @Input({ required: true }) climaTexto = "";
   @Input({ required: true }) noche = false;
@@ -471,12 +146,21 @@ export class RiverGaugeComponent
   private readonly overlaySvgRef!: ElementRef<SVGSVGElement>;
 
   private readonly ngZone = inject(NgZone);
+  private readonly naturalFoodTypes: readonly NaturalFoodType[] = [
+    "fruit",
+    "plant",
+    "pellet",
+  ];
   private viewReady = false;
   private gaugeData = buildRiverGaugeData({
     nivelCm: 0,
     umbrales: {
       valores: { amarilla: null, naranja: null, roja: null },
-      origen: { amarilla: "sin definir", naranja: "sin definir", roja: "sin definir" },
+      origen: {
+        amarilla: "sin definir",
+        naranja: "sin definir",
+        roja: "sin definir",
+      },
     },
     ambiente: "despejado",
     noche: false,
@@ -486,15 +170,12 @@ export class RiverGaugeComponent
     nivelMurallaCm: 1000,
   });
 
-  private cleanupPointer: (() => void) | null = null;
   private cleanupThree: (() => void) | null = null;
 
   get ariaDescription(): string {
-    return `Hábitat del río en ${this.climaTexto}, ${
+    return `Ecosistema del río en ${this.climaTexto}, ${
       this.noche ? "de noche" : "de día"
-    }. Nivel ${this.nivelCm.toFixed(1)} centímetros; peces ${
-      this.estadoPecesTexto
-    }.`;
+    }. Nivel ${this.nivelCm.toFixed(1)} centímetros.`;
   }
 
   ngAfterViewInit(): void {
@@ -522,19 +203,30 @@ export class RiverGaugeComponent
     this.teardownListeners();
   }
 
+  private pickNaturalFoodType(): NaturalFoodType {
+    return this.naturalFoodTypes[
+      Math.floor(Math.random() * this.naturalFoodTypes.length)
+    ];
+  }
+
   handleFeedButtonClick(): void {
-    const minY = Math.min(440, this.gaugeData.ySurface + 24);
-    const maxY = Math.max(minY + 10, 455);
-    const randomX = 75 + Math.random() * 205;
-    const randomY = minY + Math.random() * (maxY - minY);
-    this.dropFoodAt(randomX, randomY);
+    const randomX = 65 + Math.random() * 210;
+    this.dispatchFeedEvent(randomX, this.pickNaturalFoodType());
+  }
+
+  private dispatchFeedEvent(
+    rawX: number,
+    type: NaturalFoodType
+  ): void {
+    const panel = this.panelRef?.nativeElement;
+    if (!panel) return;
+    const x = Math.max(36, Math.min(312, rawX));
+    panel.dispatchEvent(
+      new CustomEvent("river-feed", { detail: { x, type } })
+    );
   }
 
   private teardownListeners(): void {
-    if (this.cleanupPointer) {
-      this.cleanupPointer();
-      this.cleanupPointer = null;
-    }
     if (this.cleanupThree) {
       this.cleanupThree();
       this.cleanupThree = null;
@@ -554,86 +246,23 @@ export class RiverGaugeComponent
     }
 
     this.ngZone.runOutsideAngular(() => {
-      this.setupPointerListener();
       this.setupThreeScene();
     });
   }
 
-  private dropFoodAt(rawX: number, rawY: number): void {
-    const panel = this.panelRef?.nativeElement;
-    const svg = this.svgRef?.nativeElement;
-    if (!panel || !svg) return;
-    const superficie = this.gaugeData.ySurface;
-    const x = Math.max(50, Math.min(325, rawX));
-    const y = Math.max(superficie + 8, Math.min(466, rawY));
-
-    const comida = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "circle"
-    );
-    comida.setAttribute("class", "jn-alimento");
-    comida.setAttribute("cx", String(x));
-    comida.setAttribute("cy", String(y));
-    comida.setAttribute("r", "4");
-    svg.appendChild(comida);
-
-    const onda = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "circle"
-    );
-    onda.setAttribute("class", "jn-ondas-comida");
-    onda.setAttribute("cx", String(x));
-    onda.setAttribute("cy", String(y));
-    onda.setAttribute("r", "7");
-    svg.appendChild(onda);
-
-    panel.dispatchEvent(new CustomEvent("fish-feed", { detail: { x, y } }));
-    window.setTimeout(() => {
-      comida.remove();
-      onda.remove();
-    }, 2100);
-  }
-
-  private setupPointerListener(): void {
-    const panel = this.panelRef?.nativeElement;
-    const svg = this.svgRef?.nativeElement;
-    if (!panel || !svg) return;
-    const superficie = this.gaugeData.ySurface;
-
-    const puntoLocal = (x: number, y: number) => {
-      const ctm = svg.getScreenCTM();
-      if (!ctm) return { x: 170, y: Math.min(460, superficie + 40) };
-      const punto = svg.createSVGPoint();
-      punto.x = x;
-      punto.y = y;
-      return punto.matrixTransform(ctm.inverse());
-    };
-
-    const onPointerDown = (evento: PointerEvent) => {
-      evento.preventDefault();
-      const punto = puntoLocal(evento.clientX, evento.clientY);
-      this.dropFoodAt(punto.x, punto.y);
-    };
-
-    panel.addEventListener("pointerdown", onPointerDown);
-    this.cleanupPointer = () => {
-      panel.removeEventListener("pointerdown", onPointerDown);
-    };
-  }
-
   private setupThreeScene(): void {
     const panel = this.panelRef?.nativeElement;
+    const svg = this.svgRef?.nativeElement;
     const mount = this.canvasMountRef?.nativeElement;
-    if (!panel || !mount) return;
+    if (!panel || !svg || !mount) return;
 
     const superficie = this.gaugeData.ySurface;
     const surfaceSceneY = 250 - superficie;
+    const limiteInferior = 466;
+    const limiteSuperior = superficie + 12;
+    const bottomSceneY = 250 - limiteInferior;
     const perfiles = this.gaugeData.fishProfiles;
-    const movimiento = {
-      calm: { velocidad: 15, amplitud: 0.55, reaccion: 1.0 },
-      uncomfortable: { velocidad: 23, amplitud: 1.0, reaccion: 1.35 },
-      scared: { velocidad: 31, amplitud: 1.45, reaccion: 1.75 },
-    }[this.estadoPeces];
+
     const reducido = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
@@ -644,37 +273,39 @@ export class RiverGaugeComponent
     const isRainVal =
       this.ambiente === "lluvia" || this.ambiente === "tormenta" ? 1.0 : 0.0;
 
+    const baseFlowSpeed =
+      (this.estadoPeces === "scared" ? 18 : 11.5) * (reducido ? 0.25 : 1);
+
     const escena = new THREE.Scene();
     const camara = new THREE.OrthographicCamera(-170, 170, 250, -250, 0.1, 100);
     camara.position.set(0, 0, 50);
     camara.lookAt(0, 0, 0);
 
-    const ambientIntensity = this.noche ? 0.85 : 1.15;
     escena.add(
       new THREE.AmbientLight(
-        this.noche ? 0x89bfd1 : 0xd8f2f5,
-        ambientIntensity
+        this.noche ? 0x82b7ca : 0xd8f2f3,
+        this.noche ? 0.85 : 1.15
       )
     );
     escena.add(
       new THREE.HemisphereLight(
-        this.noche ? 0x5c9db8 : 0x9be4ec,
-        0x072636,
-        this.noche ? 0.55 : 0.72
+        this.noche ? 0x5493ae : 0x9be2e7,
+        0x072432,
+        this.noche ? 0.52 : 0.72
       )
     );
     const solAgua = new THREE.DirectionalLight(
-      this.noche ? 0xbcdcf2 : 0xffedc4,
-      this.noche ? 1.45 : 2.25
+      this.noche ? 0xb4d5eb : 0xfff0c8,
+      this.noche ? 1.35 : 2.1
     );
-    solAgua.position.set(-80, 120, 110);
+    solAgua.position.set(-75, 130, 110);
     escena.add(solAgua);
     const reflejoAgua = new THREE.PointLight(
-      this.noche ? 0x4ca6c2 : 0x75e7ed,
-      this.noche ? 24 : 38,
+      this.noche ? 0x459ab5 : 0x70dfe3,
+      this.noche ? 20 : 32,
       420
     );
-    reflejoAgua.position.set(95, Math.min(180, surfaceSceneY - 25), 35);
+    reflejoAgua.position.set(85, Math.min(180, surfaceSceneY - 24), 34);
     escena.add(reflejoAgua);
 
     let renderer: THREE.WebGLRenderer;
@@ -685,7 +316,7 @@ export class RiverGaugeComponent
         powerPreference: "high-performance",
       });
     } catch (error) {
-      console.error("No se pudo iniciar el hábitat 3D de peces.", error);
+      console.error("No se pudo iniciar el ecosistema 3D del río.", error);
       return;
     }
 
@@ -698,12 +329,12 @@ export class RiverGaugeComponent
     );
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.08;
+    renderer.toneMappingExposure = 1.06;
 
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const envTarget = pmremGenerator.fromScene(new RoomEnvironment(), 0.04);
     escena.environment = envTarget.texture;
-    escena.environmentIntensity = this.noche ? 0.25 : 0.38;
+    escena.environmentIntensity = this.noche ? 0.24 : 0.36;
     pmremGenerator.dispose();
 
     const disposables: Array<{ dispose: () => void }> = [envTarget];
@@ -717,6 +348,7 @@ export class RiverGaugeComponent
       ? 1
       : renderer.capabilities.getMaxAnisotropy();
     const waterPlaneGeom = track(new THREE.PlaneGeometry(340, 500, 1, 1));
+
     const waterBackUniforms = {
       uTime: { value: 0 },
       uSurfaceSceneY: { value: surfaceSceneY },
@@ -724,8 +356,6 @@ export class RiverGaugeComponent
       uNight: { value: isNightVal },
       uStorm: { value: isStormVal },
       uRain: { value: isRainVal },
-      uRipplePos: { value: new THREE.Vector2(0, surfaceSceneY - 30) },
-      uRippleAge: { value: 99 },
       uNormalMap: { value: waterNormalMap },
     };
     const waterBackMat = track(
@@ -748,8 +378,6 @@ export class RiverGaugeComponent
       uWindFactor: { value: windFactor },
       uNight: { value: isNightVal },
       uStorm: { value: isStormVal },
-      uRipplePos: { value: new THREE.Vector2(0, surfaceSceneY - 30) },
-      uRippleAge: { value: 99 },
       uNormalMap: { value: waterNormalMap },
     };
     const waterForeMat = track(
@@ -767,21 +395,22 @@ export class RiverGaugeComponent
     waterForeMesh.renderOrder = 3;
     escena.add(waterForeMesh);
 
-    const waterHeightPx = Math.max(10, 466 - superficie);
-    const particleCount = 64;
+    // Subtle organic suspended river sediment particles
+    const waterHeightPx = Math.max(10, limiteInferior - superficie);
+    const particleCount = 46;
     const particlePositions = new Float32Array(particleCount * 3);
     const particleMeta = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
-      const px = -170 + ((i * 53.7) % 340);
+      const px = -170 + ((i * 61.3) % 340);
       const py =
-        250 - (superficie + 6 + ((i * 37.3) % Math.max(8, waterHeightPx - 10)));
-      const pz = i % 3 === 0 ? 2.4 : -4.0 + (i % 5);
+        250 - (superficie + 8 + ((i * 41.7) % Math.max(8, waterHeightPx - 12)));
+      const pz = i % 3 === 0 ? 2.2 : -4.2 + (i % 5);
       particlePositions[i * 3] = px;
       particlePositions[i * 3 + 1] = py;
       particlePositions[i * 3 + 2] = pz;
-      particleMeta[i * 3] = 4.5 + (i % 7) * 1.8;
-      particleMeta[i * 3 + 1] = (i * 0.71) % (Math.PI * 2);
-      particleMeta[i * 3 + 2] = 0.6 + (i % 4) * 0.45;
+      particleMeta[i * 3] = 3.2 + (i % 6) * 1.1;
+      particleMeta[i * 3 + 1] = (i * 0.83) % (Math.PI * 2);
+      particleMeta[i * 3 + 2] = 0.25 + (i % 4) * 0.22;
     }
     const particleGeom = track(new THREE.BufferGeometry());
     const particleAttr = new THREE.BufferAttribute(particlePositions, 3);
@@ -789,10 +418,10 @@ export class RiverGaugeComponent
     const particleTex = track(createParticleTexture());
     const particleMat = track(
       new THREE.PointsMaterial({
-        size: 3.6,
+        size: 2.8,
         map: particleTex,
         transparent: true,
-        opacity: this.noche ? 0.22 : 0.34,
+        opacity: this.noche ? 0.16 : 0.24,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         color: this.noche ? 0x86cde0 : 0xcbf7fc,
@@ -802,371 +431,223 @@ export class RiverGaugeComponent
     particlesMesh.renderOrder = 2;
     escena.add(particlesMesh);
 
-    function material(color: number, roughness = 0.43, metalness = 0.02) {
-      return track(
-        new THREE.MeshStandardMaterial({
-          color,
-          roughness,
-          metalness,
-          side: THREE.DoubleSide,
-        })
-      );
-    }
+    // Build natural underwater obstacles & swaying aquatic plants
+    const habitat = buildRiverHabitat({
+      scene: escena,
+      superficie,
+      limiteInferior,
+      noche: this.noche,
+      track,
+    });
 
-    function extruirAleta(puntos: Array<[number, number]>, color: number) {
-      const forma = new THREE.Shape();
-      forma.moveTo(puntos[0][0], puntos[0][1]);
-      for (const [x, y] of puntos.slice(1)) forma.lineTo(x, y);
-      forma.closePath();
-      const geometria = track(
-        new THREE.ExtrudeGeometry(forma, {
-          depth: 0.16,
-          bevelEnabled: true,
-          bevelSegments: 2,
-          bevelSize: 0.035,
-          bevelThickness: 0.035,
-          steps: 1,
-        })
-      );
-      geometria.translate(0, 0, -0.08);
-      return new THREE.Mesh(geometria, material(color, 0.62, 0.01));
-    }
-
-    function agregarTubo(
-      grupo: THREE.Group,
-      puntos: Array<[number, number, number]>,
-      color: number,
-      radio = 0.24
-    ) {
-      const curva = new THREE.CatmullRomCurve3(
-        puntos.map(([x, y, z]) => new THREE.Vector3(x, y, z))
-      );
-      const geom = track(new THREE.TubeGeometry(curva, 12, radio, 5, false));
-      const malla = new THREE.Mesh(geom, material(color, 0.62));
-      grupo.add(malla);
-    }
-
-    function crearPez(perfil: FishProfile, indice: number): FishEntity {
-      const paleta = PALETAS[perfil.especie];
-      const largo = perfil.largo;
-      const alto = perfil.alto;
-      const medioLargo = largo * 0.36;
-      const medioAlto = alto * 0.4;
-      const medioAncho = alto * 0.19;
-      const pez = new THREE.Group();
-      const cuerpoGeometria = track(new THREE.SphereGeometry(1, 28, 18));
-      const vertices = cuerpoGeometria.attributes
-        .position as THREE.BufferAttribute;
-      const originales = new Float32Array(vertices.array.length);
-      const colores = new Float32Array(vertices.count * 3);
-      const base = new THREE.Color(paleta.cuerpo);
-      const lomo = new THREE.Color(paleta.lomo);
-      const vientre = new THREE.Color(paleta.vientre);
-      const colorVertice = new THREE.Color();
-
-      for (let i = 0; i < vertices.count; i++) {
-        const offset = i * 3;
-        const nx = vertices.array[offset];
-        const ny = vertices.array[offset + 1];
-        const nz = vertices.array[offset + 2];
-        const estrechamiento = 0.68 + 0.32 * Math.sqrt(Math.max(0, 1 - nx * nx));
-        vertices.array[offset] = nx * medioLargo;
-        vertices.array[offset + 1] = ny * medioAlto * estrechamiento;
-        vertices.array[offset + 2] = nz * medioAncho * estrechamiento;
-        originales[offset] = vertices.array[offset];
-        originales[offset + 1] = vertices.array[offset + 1];
-        originales[offset + 2] = vertices.array[offset + 2];
-
-        if (ny > 0.12)
-          colorVertice.copy(base).lerp(lomo, Math.min(0.82, (ny - 0.12) * 0.9));
-        else if (ny < -0.18)
-          colorVertice
-            .copy(base)
-            .lerp(vientre, Math.min(0.9, (-ny - 0.18) * 1.1));
-        else colorVertice.copy(base);
-        colorVertice.toArray(colores, offset);
-      }
-      cuerpoGeometria.setAttribute(
-        "color",
-        new THREE.BufferAttribute(colores, 3)
-      );
-      cuerpoGeometria.computeVertexNormals();
-      const cuerpo = new THREE.Mesh(
-        cuerpoGeometria,
-        track(
-          new THREE.MeshStandardMaterial({
-            vertexColors: true,
-            roughness: 0.32,
-            metalness: 0.08,
-          })
-        )
-      );
-      cuerpo.name = "body";
-      cuerpo.position.x = -medioLargo * 0.04;
-      pez.add(cuerpo);
-
-      const cabeza = new THREE.Mesh(
-        track(new THREE.SphereGeometry(1, 20, 14)),
-        material(paleta.cuerpo, 0.34, 0.04)
-      );
-      cabeza.scale.set(medioLargo * 0.5, medioAlto * 0.72, medioAncho * 0.83);
-      cabeza.position.set(medioLargo * 0.57, medioAlto * 0.02, 0);
-      pez.add(cabeza);
-
-      const ojoBlanco = material(0xfff8e8, 0.25);
-      const pupila = material(0x102a38, 0.15);
-      const brillo = material(0xffffff, 0.12);
-      const ojoGeom = track(new THREE.SphereGeometry(0.92, 12, 10));
-      const pupilaGeom = track(new THREE.SphereGeometry(0.48, 10, 8));
-      const brilloGeom = track(new THREE.SphereGeometry(0.15, 8, 6));
-
-      for (const lado of [-1, 1]) {
-        const ojo = new THREE.Mesh(ojoGeom, ojoBlanco);
-        ojo.scale.set(0.85, 0.78, 0.38);
-        ojo.position.set(
-          medioLargo * 0.76,
-          medioAlto * 0.23,
-          lado * medioAncho * 0.7
-        );
-        pez.add(ojo);
-        const centroPupila = new THREE.Mesh(pupilaGeom, pupila);
-        centroPupila.scale.set(0.9, 0.95, 0.55);
-        centroPupila.position.set(
-          medioLargo * 0.8,
-          medioAlto * 0.24,
-          lado * (medioAncho * 0.77)
-        );
-        pez.add(centroPupila);
-        const puntoLuz = new THREE.Mesh(brilloGeom, brillo);
-        puntoLuz.position.set(
-          medioLargo * 0.82,
-          medioAlto * 0.29,
-          lado * medioAncho * 0.82
-        );
-        pez.add(puntoLuz);
-      }
-
-      const superficieCuerpo = (
-        nx: number,
-        ny: number,
-        side = 1
-      ): [number, number, number] => {
-        const t = 0.68 + 0.32 * Math.sqrt(Math.max(0, 1 - nx * nx));
-        return [
-          nx * medioLargo - medioLargo * 0.04,
-          ny * medioAlto * t,
-          side *
-            medioAncho *
-            t *
-            Math.sqrt(Math.max(0.02, 1 - nx * nx - ny * ny)) *
-            1.025,
-        ];
-      };
-
-      for (const lado of [-1, 1]) {
-        agregarTubo(
-          pez,
-          [
-            superficieCuerpo(0.42, 0.52, lado),
-            superficieCuerpo(0.46, 0, lado),
-            superficieCuerpo(0.42, -0.54, lado),
-          ],
-          paleta.raya,
-          0.22
-        );
-        agregarTubo(
-          pez,
-          [
-            superficieCuerpo(-0.74, 0.02, lado),
-            superficieCuerpo(-0.15, 0.02, lado),
-            superficieCuerpo(0.38, 0.02, lado),
-          ],
-          paleta.lomo,
-          0.16
-        );
-        for (const raya of perfil.rayas) {
-          agregarTubo(
-            pez,
-            [
-              superficieCuerpo(raya, 0.66, lado),
-              superficieCuerpo(raya, 0, lado),
-              superficieCuerpo(raya, -0.62, lado),
-            ],
-            paleta.raya,
-            0.34
-          );
-        }
-      }
-
-      const aletaDorsal = new THREE.Group();
-      aletaDorsal.name = "dorsal";
-      aletaDorsal.position.set(-medioLargo * 0.02, medioAlto * 0.63, 0);
-      aletaDorsal.add(
-        extruirAleta(
-          [
-            [-largo * 0.16, 0],
-            [-largo * 0.08, alto * 0.4],
-            [largo * 0.01, alto * 0.31],
-            [largo * 0.14, 0],
-          ],
-          paleta.aleta
-        )
-      );
-      pez.add(aletaDorsal);
-
-      const aletaAnal = extruirAleta(
-        [
-          [-largo * 0.16, 0],
-          [-largo * 0.04, -alto * 0.24],
-          [largo * 0.1, 0],
-        ],
-        paleta.aleta
-      );
-      aletaAnal.position.set(
-        -medioLargo * 0.48,
-        -medioAlto * 0.62,
-        medioAncho * 0.2
-      );
-      pez.add(aletaAnal);
-
-      const aletaPelvica = extruirAleta(
-        [
-          [-largo * 0.07, 0],
-          [-largo * 0.03, -alto * 0.17],
-          [largo * 0.06, 0],
-        ],
-        paleta.aleta
-      );
-      aletaPelvica.position.set(
-        medioLargo * 0.02,
-        -medioAlto * 0.66,
-        medioAncho * 0.25
-      );
-      pez.add(aletaPelvica);
-
-      const cola = new THREE.Group();
-      cola.name = "tail";
-      cola.position.set(-medioLargo * 0.92, 0, 0);
-      cola.add(
-        extruirAleta(
-          [
-            [0, 0],
-            [-largo * 0.25, alto * 0.32],
-            [-largo * 0.17, 0],
-            [-largo * 0.25, -alto * 0.32],
-          ],
-          paleta.aleta
-        )
-      );
-      pez.add(cola);
-
-      const pectorales: THREE.Object3D[] = [];
-      for (const lado of [-1, 1]) {
-        const pectoral = new THREE.Group();
-        pectoral.name = `pectoral-${lado}`;
-        pectoral.position.set(
-          medioLargo * 0.05,
-          -medioAlto * 0.07,
-          lado * medioAncho * 0.82
-        );
-        pectoral.add(
-          extruirAleta(
-            [
-              [0, 0],
-              [-largo * 0.15, -alto * 0.29],
-              [largo * 0.07, -alto * 0.2],
-            ],
-            paleta.aleta
-          )
-        );
-        pez.add(pectoral);
-        pectorales.push(pectoral);
-      }
-
-      if (["bagre", "doncella", "capaz"].includes(perfil.especie)) {
-        for (const lado of [-1, 1]) {
-          agregarTubo(
-            pez,
-            [
-              [medioLargo * 0.87, -medioAlto * 0.08, lado * medioAncho * 0.48],
-              [medioLargo * 1.04, -medioAlto * 0.24, lado * medioAncho * 0.66],
-              [medioLargo * 1.22, -medioAlto * 0.26, lado * medioAncho * 0.78],
-            ],
-            paleta.vientre,
-            0.18
-          );
-        }
-      }
-
-      const pantallaY = 466 - (perfil.profundidad / 100) * (466 - superficie);
-      const minY = superficie + alto * 0.6 + 7;
-      const maxY = 466 - alto * 0.65;
-      const y = THREE.MathUtils.clamp(pantallaY, minY, Math.max(minY, maxY));
-      pez.position.set(perfil.x - 170, 250 - y, (indice % 3) * 0.12);
-      pez.traverse((obj) => {
-        obj.renderOrder = 1;
+    // Build calm manatees (adult + calf) when water is deep enough
+    const manatees: ManateeEntity[] = [];
+    if (waterHeightPx > 72) {
+      const adult = buildRiverManateeEntity({
+        indice: 0,
+        scale: 1.0,
+        startX: 92,
+        profundidadPct: 62,
+        superficie,
+        limiteInferior,
+        noche: this.noche,
+        track,
       });
-      escena.add(pez);
+      escena.add(adult.group);
+      manatees.push(adult);
 
-      return {
-        group: pez,
-        geometry: cuerpoGeometria,
-        baseVertices: originales,
-        vertices,
-        tail: cola,
-        dorsal: aletaDorsal,
-        pectorals: pectorales,
-        baseY: y,
-        height: alto,
-        length: largo,
-        minY,
-        maxY: Math.max(minY, maxY),
-        phase: perfil.fase,
-        speedFactor: perfil.velocidad,
-        target: null,
-        wrapGhost: null,
-      };
+      if (waterHeightPx > 105) {
+        const subadult = buildRiverManateeEntity({
+          indice: 1,
+          scale: 0.72,
+          startX: 258,
+          profundidadPct: 48,
+          superficie,
+          limiteInferior,
+          noche: this.noche,
+          track,
+        });
+        escena.add(subadult.group);
+        manatees.push(subadult);
+      }
     }
 
-    const peces = perfiles.map(crearPez);
-    const anchoEscena = 340;
-    const limiteInferior = 466;
-    const limiteSuperior = superficie + 20;
-    const intensidadMovimiento = reducido ? 0.25 : 1;
+    // Build swimming river turtles
+    const turtles: TurtleEntity[] = [];
+    if (waterHeightPx > 42) {
+      const turtleConfigs: Array<[number, number, number]> = [
+        [0.95, 138, 34],
+        [0.78, 286, 56],
+      ];
+      turtleConfigs.forEach(([scale, startX, prof], idx) => {
+        const turtle = buildRiverTurtleEntity({
+          indice: idx,
+          scale,
+          startX,
+          profundidadPct: prof,
+          superficie,
+          limiteInferior,
+          noche: this.noche,
+          track,
+        });
+        escena.add(turtle.group);
+        turtles.push(turtle);
+      });
+    }
+
+    // Build fish & attach non-cyclic biological steering state
+    const fishBrains = new WeakMap<FishEntity, FishBrainState>();
+    const peces: FishEntity[] = perfiles.map((perfil, indice) => {
+      const entity = buildRiverFishEntity({
+        perfil,
+        indice,
+        superficie,
+        limiteInferior,
+        baseCurrentSpeed: baseFlowSpeed,
+        track,
+      });
+      const facingDir: 1 | -1 = indice % 5 === 2 ? -1 : 1;
+      if (facingDir === -1) {
+        entity.vx = -entity.baseSpeed * 0.65;
+        entity.group.rotation.y = Math.PI;
+      }
+      fishBrains.set(entity, {
+        species: perfil.especie,
+        isSchooling: SCHOOLING_SPECIES.has(perfil.especie),
+        facingDir,
+        exploreMode: "cruise",
+        modeTimer: 2.5 + (indice % 7) * 1.4,
+        targetOffsetY: 0,
+        biteCooldown: 0,
+        postMealBoost: 0,
+      });
+      escena.add(entity.group);
+      return entity;
+    });
+
+    const foodManager = new RiverFoodManager(escena, track);
+
+    // Collect all interactive animal hit proxies
+    const animalHitProxies: THREE.Object3D[] = [
+      ...peces.map((p) => p.hitProxy),
+      ...manatees.map((m) => m.hitProxy),
+      ...turtles.map((t) => t.hitProxy),
+    ];
 
     if (!isSoftwareGl) {
       renderer.compile(escena, camara);
     }
 
-    function copiarArticulacion(pez: FishEntity, fantasma: THREE.Group) {
-      fantasma.position.copy(pez.group.position);
-      fantasma.position.x -= anchoEscena;
-      fantasma.rotation.copy(pez.group.rotation);
-      const t = fantasma.getObjectByName("tail");
-      const d = fantasma.getObjectByName("dorsal");
-      if (t) t.rotation.copy(pez.tail.rotation);
-      if (d) d.rotation.copy(pez.dorsal.rotation);
-      for (const lado of [-1, 1]) {
-        const p = fantasma.getObjectByName(`pectoral-${lado}`);
-        if (p) p.rotation.copy(pez.pectorals[lado === -1 ? 0 : 1].rotation);
-      }
-    }
+    const raycaster = new THREE.Raycaster();
+    const pointerNdc = new THREE.Vector2();
 
-    function adoptarFantasma(pez: FishEntity) {
-      if (!pez.wrapGhost) return;
-      escena.remove(pez.group);
-      pez.group = pez.wrapGhost;
-      pez.wrapGhost = null;
-      pez.tail = pez.group.getObjectByName("tail")!;
-      pez.dorsal = pez.group.getObjectByName("dorsal")!;
-      pez.pectorals = [-1, 1].map(
-        (lado) => pez.group.getObjectByName(`pectoral-${lado}`)!
-      );
-      if (pez.target && pez.target.wrap) {
-        pez.target.x -= anchoEscena;
-        pez.target.wrap = false;
+    const updateNdcFromClient = (clientX: number, clientY: number): boolean => {
+      const rect = panel.getBoundingClientRect();
+      if (!rect.width || !rect.height) return false;
+      pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      return true;
+    };
+
+    const puntoSvgLocal = (x: number, y: number) => {
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return { x: 170, y: Math.min(450, superficie + 40) };
+      const punto = svg.createSVGPoint();
+      punto.x = x;
+      punto.y = y;
+      return punto.matrixTransform(ctm.inverse());
+    };
+
+    const reactAnimalTap = (hitObject: THREE.Object3D, tapWorldY: number) => {
+      const fish = hitObject.userData["fishEntity"] as FishEntity | undefined;
+      if (fish) {
+        fish.clickImpulse = 1.55;
+        const dy = fish.group.position.y - tapWorldY;
+        const dodgeDir =
+          Math.abs(dy) > 1.2
+            ? Math.sign(dy)
+            : fish.group.position.y > surfaceSceneY - 40
+              ? -1
+              : 1;
+        fish.clickNudgeY = dodgeDir * (13 + Math.random() * 8);
+        fish.pauseTimer = 0;
+        return;
       }
-    }
+
+      const animal = hitObject.userData["animalEntity"] as
+        | { kind: "manatee"; entity: ManateeEntity }
+        | { kind: "turtle"; entity: TurtleEntity }
+        | undefined;
+      if (!animal) return;
+
+      if (animal.kind === "manatee") {
+        const m = animal.entity;
+        m.clickImpulse = 0.65; // calm gentle dive/glide, never startled abruptly
+        m.clickNudgeY = -8 - Math.random() * 6;
+        if (m.state === "breathing" || m.state === "surfacing") {
+          m.state = "diving";
+        }
+      } else {
+        const t = animal.entity;
+        t.clickImpulse = 1.15;
+        const dy = t.group.position.y - tapWorldY;
+        t.clickNudgeY = (Math.abs(dy) > 1 ? Math.sign(dy) : -1) * 11;
+      }
+    };
+
+    const onPointerDown = (evento: PointerEvent) => {
+      if (updateNdcFromClient(evento.clientX, evento.clientY)) {
+        raycaster.setFromCamera(pointerNdc, camara);
+        const hits = raycaster.intersectObjects(animalHitProxies, false);
+        if (hits.length > 0) {
+          evento.preventDefault();
+          reactAnimalTap(hits[0].object, hits[0].point.y);
+          return;
+        }
+      }
+
+      const punto = puntoSvgLocal(evento.clientX, evento.clientY);
+      if (punto.y > superficie - 24) {
+        evento.preventDefault();
+        foodManager.spawnFoodCluster({
+          type: this.pickNaturalFoodType(),
+          screenX: punto.x,
+          superficie,
+        });
+      }
+    };
+
+    let lastHoverCheck = 0;
+    const onPointerMove = (evento: PointerEvent) => {
+      const now = performance.now();
+      if (now - lastHoverCheck < 45) return;
+      lastHoverCheck = now;
+      if (!updateNdcFromClient(evento.clientX, evento.clientY)) return;
+      raycaster.setFromCamera(pointerNdc, camara);
+      const hits = raycaster.intersectObjects(animalHitProxies, false);
+      panel.style.cursor = hits.length > 0 ? "pointer" : "default";
+    };
+
+    const onPointerLeave = () => {
+      panel.style.cursor = "default";
+    };
+
+    const onRiverFeed = (evento: Event) => {
+      const custom = evento as CustomEvent<{
+        x: number;
+        type: NaturalFoodType;
+      }>;
+      foodManager.spawnFoodCluster({
+        type: custom.detail.type,
+        screenX: custom.detail.x,
+        superficie,
+      });
+    };
+
+    panel.addEventListener("pointerdown", onPointerDown);
+    panel.addEventListener("pointermove", onPointerMove);
+    panel.addEventListener("pointerleave", onPointerLeave);
+    panel.addEventListener("river-feed", onRiverFeed);
 
     function redimensionar() {
       if (!panel) return;
@@ -1189,11 +670,10 @@ export class RiverGaugeComponent
 
     let tiempoPrevio = performance.now();
     let tiempo = 0;
-    let rippleStartTime = -99;
     let frameId = 0;
     let disposed = false;
-
     const nightMode = this.noche;
+    const intensidad = reducido ? 0.25 : 1;
 
     function afterDraw(cb: () => void) {
       const gl = renderer.getContext() as WebGL2RenderingContext;
@@ -1219,8 +699,51 @@ export class RiverGaugeComponent
       }
     }
 
-    function shortestAngleDelta(target: number, current: number): number {
-      return Math.atan2(Math.sin(target - current), Math.cos(target - current));
+    function computeObstacleAvoidance(
+      x: number,
+      y: number,
+      entityRadius: number
+    ): { ax: number; ay: number } {
+      let ax = 0;
+      let ay = 0;
+      for (const obs of habitat.obstacles) {
+        const dx = x - obs.x;
+        const dy = y - obs.y;
+        const safeDist = obs.radius + entityRadius + 8;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < safeDist * safeDist && distSq > 0.01) {
+          const dist = Math.sqrt(distSq);
+          const strength = ((safeDist - dist) / safeDist) * 28;
+          ax += (dx / dist) * strength * 0.45;
+          // Prefer gliding cleanly upward over riverbed rocks/logs
+          ay += ((dy / dist) * 0.7 + 0.35) * strength;
+        }
+      }
+      return { ax, ay };
+    }
+
+    function findBestFood(
+      x: number,
+      y: number,
+      maxRange: number,
+      preferredType?: NaturalFoodType
+    ): FoodPiece | null {
+      let best: FoodPiece | null = null;
+      let bestScore = Infinity;
+      for (const piece of foodManager.pieces) {
+        if (!piece.inWater || piece.energy <= 0) continue;
+        const dx = piece.x - x;
+        const dy = piece.y - y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > maxRange) continue;
+        const prefBonus = preferredType && piece.type === preferredType ? 0.65 : 1.0;
+        const score = dist * prefBonus;
+        if (score < bestScore) {
+          bestScore = score;
+          best = piece;
+        }
+      }
+      return best;
     }
 
     function animar(marca: number) {
@@ -1228,32 +751,37 @@ export class RiverGaugeComponent
       const delta = Math.min((marca - tiempoPrevio) / 1000, 0.04);
       tiempoPrevio = marca;
       tiempo += delta;
-      const potencia = movimiento.amplitud * (reducido ? 0.2 : 1);
 
       const shaderTime = reducido ? 0 : tiempo;
       waterBackUniforms.uTime.value = shaderTime;
       waterForeUniforms.uTime.value = shaderTime;
-      const rippleAge = rippleStartTime >= 0 ? tiempo - rippleStartTime : 99;
-      waterBackUniforms.uRippleAge.value = rippleAge;
-      waterForeUniforms.uRippleAge.value = rippleAge;
       reflejoAgua.intensity =
-        (nightMode ? 22 : 36) +
-        Math.sin(shaderTime * 1.9) * (nightMode ? 3 : 6);
+        (nightMode ? 20 : 32) +
+        Math.sin(shaderTime * 0.8) * (nightMode ? 1.5 : 3.0);
 
+      // Gentle underwater plant sway in current
       if (!reducido) {
+        for (const pl of habitat.plants) {
+          pl.group.rotation.z =
+            -0.08 +
+            Math.sin(tiempo * pl.speed + pl.phase) * pl.swayAmp +
+            Math.cos(tiempo * (pl.speed * 0.53) + pl.phase) * (pl.swayAmp * 0.4);
+        }
+
+        // Suspended river micro-particles drifting gently downstream
         const pArr = particleAttr.array as Float32Array;
-        const maxParticleY = surfaceSceneY - 5;
-        const minParticleY = -216;
+        const maxParticleY = surfaceSceneY - 4;
+        const minParticleY = bottomSceneY + 2;
         for (let i = 0; i < particleCount; i++) {
           const i3 = i * 3;
           const speed = particleMeta[i3];
           const phase = particleMeta[i3 + 1];
           const bob = particleMeta[i3 + 2];
-          let px = pArr[i3] + speed * delta * (0.7 + windFactor * 0.6);
+          let px = pArr[i3] + speed * delta * (0.7 + windFactor * 0.4);
           if (px > 174) px -= 348;
           let py =
             pArr[i3 + 1] +
-            (Math.sin(tiempo * 1.3 + phase) * 1.4 + bob) * delta;
+            Math.sin(tiempo * 0.8 + phase) * bob * delta;
           if (py > maxParticleY) py = minParticleY + 4;
           pArr[i3] = px;
           pArr[i3 + 1] = py;
@@ -1261,121 +789,572 @@ export class RiverGaugeComponent
         particleAttr.needsUpdate = true;
       }
 
-      for (const pez of peces) {
-        const faseNado =
-          tiempo * (2.4 + pez.speedFactor * 0.45) + pez.phase * Math.PI * 2;
-        const posiciones = pez.vertices;
-        for (let i = 0; i < posiciones.count; i++) {
-          const offset = i * 3;
-          const x = pez.baseVertices[offset];
-          const dorsalidad = Math.max(0, -x / (pez.length * 0.36));
-          const onda =
-            Math.sin(faseNado - x * 0.22) *
-            pez.height *
-            0.055 *
-            potencia *
-            dorsalidad ** 1.5;
-          posiciones.array[offset] = pez.baseVertices[offset];
-          posiciones.array[offset + 1] = pez.baseVertices[offset + 1] + onda;
-          posiciones.array[offset + 2] =
-            pez.baseVertices[offset + 2] +
-            Math.cos(faseNado - x * 0.22) *
-              pez.height *
-              0.018 *
-              potencia *
-              dorsalidad;
-        }
-        posiciones.needsUpdate = true;
-        pez.geometry.computeVertexNormals();
-        pez.tail.rotation.z = Math.sin(faseNado * 1.5) * 0.52 * potencia;
-        pez.dorsal.rotation.z = Math.sin(faseNado * 0.75) * 0.09 * potencia;
-        pez.pectorals.forEach((aleta, index) => {
-          aleta.rotation.x =
-            Math.sin(faseNado * 1.2 + index * Math.PI) * 0.24 * potencia;
-          aleta.rotation.z =
-            Math.sin(faseNado + index * Math.PI) * 0.07 * potencia;
-        });
+      // Update food physics (floating plants, sinking fruit & pellets)
+      foodManager.update({
+        delta,
+        time: tiempo,
+        surfaceSceneY,
+        bottomSceneY,
+        currentStrength: baseFlowSpeed * 0.55,
+      });
 
-        let targetYaw = 0;
-        let targetPitch = 0;
-        let avanzando = true;
+      // 1. Update Manatees (calm underwater cruise, breathing at surface, plant foraging)
+      for (const m of manatees) {
+        m.clickImpulse *= Math.exp(-delta * 1.4);
+        m.clickNudgeY *= Math.exp(-delta * 1.6);
 
-        if (pez.target && tiempo < pez.target.hasta) {
-          const dx = pez.target.x - pez.group.position.x;
-          const dy = pez.target.y - pez.group.position.y;
-          const distancia = Math.hypot(dx, dy);
-          targetYaw = dx < -2 ? Math.PI : 0;
-          targetPitch = Math.atan2(dy, Math.max(4, Math.abs(dx))) * 0.65;
-          if (distancia > 3) {
-            const angulo = Math.atan2(dy, dx);
-            avanzando = false;
-            const paso =
-              movimiento.velocidad *
-              movimiento.reaccion *
-              delta *
-              intensidadMovimiento;
-            pez.group.position.x += Math.cos(angulo) * paso;
-            pez.group.position.y += Math.sin(angulo) * paso;
+        let desiredVx = m.baseSpeed * m.facingDir * (1 + m.clickImpulse);
+        let desiredVy = 0;
+
+        const foodTarget =
+          m.state === "cruising"
+            ? findBestFood(m.group.position.x, m.group.position.y, 175, "plant")
+            : null;
+
+        if (foodTarget && m.clickImpulse < 0.1) {
+          const dx = foodTarget.x - m.group.position.x;
+          const dy = foodTarget.y - m.group.position.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > m.length * 0.38) {
+            const ang = Math.atan2(dy, dx);
+            const forageSpeed = m.baseSpeed * 1.35;
+            desiredVx = Math.cos(ang) * forageSpeed;
+            desiredVy = Math.sin(ang) * forageSpeed;
+            m.facingDir = dx >= 0 ? 1 : -1;
           } else {
-            if (!pez.target.llegada) pez.target.llegada = tiempo + 0.65;
-            if (tiempo < pez.target.llegada) {
-              avanzando = false;
-            } else {
-              pez.target = null;
-            }
+            foodManager.takeBite(foodTarget, 0.95 * delta * 6.5);
+            desiredVx = m.facingDir * m.baseSpeed * 0.3;
           }
         } else {
-          pez.target = null;
+          // Natural breathing state machine
+          if (m.state === "cruising") {
+            m.breathCooldown -= delta;
+            const driftY =
+              Math.sin(tiempo * 0.28 + m.wanderPhase) * 6.0 +
+              Math.cos(tiempo * 0.14 + m.wanderPhase * 1.6) * 3.5;
+            const targetSceneY = THREE.MathUtils.clamp(
+              250 - (m.preferredScreenY + driftY) + m.clickNudgeY,
+              250 - m.maxY,
+              250 - m.minY
+            );
+            desiredVy = (targetSceneY - m.group.position.y) * 0.55;
+
+            if (m.breathCooldown <= 0 && Math.abs(m.group.position.x) < 120) {
+              m.state = "surfacing";
+            }
+          } else if (m.state === "surfacing") {
+            const breatheSceneY = surfaceSceneY - m.height * 0.34;
+            desiredVx = m.baseSpeed * 0.68 * m.facingDir;
+            desiredVy = (breatheSceneY - m.group.position.y) * 0.85;
+            if (Math.abs(m.group.position.y - breatheSceneY) < 3.5) {
+              m.state = "breathing";
+              m.breathTimer = 2.0 + Math.random() * 1.1;
+            }
+          } else if (m.state === "breathing") {
+            m.breathTimer -= delta;
+            const breatheSceneY = surfaceSceneY - m.height * 0.32;
+            desiredVx = m.baseSpeed * 0.35 * m.facingDir;
+            desiredVy = (breatheSceneY - m.group.position.y) * 1.1;
+            if (m.breathTimer <= 0) {
+              m.state = "diving";
+            }
+          } else {
+            // Diving smoothly back to mid-deep water
+            const diveSceneY = 250 - m.preferredScreenY;
+            desiredVx = m.baseSpeed * 0.85 * m.facingDir;
+            desiredVy = (diveSceneY - m.group.position.y) * 0.65;
+            if (Math.abs(m.group.position.y - diveSceneY) < 6) {
+              m.state = "cruising";
+              m.breathCooldown = 12 + Math.random() * 10;
+            }
+          }
         }
 
-        if (avanzando) {
-          const velocidad =
-            movimiento.velocidad * pez.speedFactor * intensidadMovimiento;
-          pez.group.position.x += velocidad * delta;
-          const deriva = Math.sin(faseNado * 0.42) * movimiento.amplitud * 3.2;
-          const y = THREE.MathUtils.clamp(
-            pez.baseY + deriva,
+        const obs = computeObstacleAvoidance(
+          m.group.position.x,
+          m.group.position.y,
+          m.height * 0.55
+        );
+        desiredVx += obs.ax * 0.35;
+        desiredVy += obs.ay * 0.4;
+
+        m.vx = THREE.MathUtils.damp(m.vx, desiredVx, 1.4, delta);
+        m.vy = THREE.MathUtils.damp(m.vy, desiredVy, 1.5, delta);
+        m.group.position.x += m.vx * delta;
+        m.group.position.y += m.vy * delta;
+
+        // Soft upper/lower water bounds
+        const maxManateeSceneY = surfaceSceneY - m.height * 0.28;
+        const minManateeSceneY = bottomSceneY + m.height * 0.52;
+        m.group.position.y = THREE.MathUtils.clamp(
+          m.group.position.y,
+          minManateeSceneY,
+          Math.max(minManateeSceneY + 2, maxManateeSceneY)
+        );
+
+        // Slow graceful paddle tail & flipper animation
+        const moveRatio = Math.hypot(m.vx, m.vy) / Math.max(3, m.baseSpeed);
+        m.swimPhase += delta * (1.2 + moveRatio * 0.9) * intensidad;
+        m.tail.rotation.z = Math.sin(m.swimPhase) * 0.24 * intensidad;
+        m.pectorals.forEach((p, idx) => {
+          p.rotation.z = Math.sin(m.swimPhase * 0.8 + idx * 0.6) * 0.16 * intensidad;
+          p.rotation.x = Math.cos(m.swimPhase * 0.6 + idx * Math.PI) * 0.1 * intensidad;
+        });
+
+        const targetYaw = m.vx < -0.8 ? Math.PI : 0;
+        const rawPitch = Math.atan2(m.vy, Math.max(3, Math.abs(m.vx))) * 0.52;
+        const targetPitch = THREE.MathUtils.clamp(rawPitch, -0.34, 0.34);
+        m.group.rotation.y +=
+          shortestAngleDelta(targetYaw, m.group.rotation.y) *
+          Math.min(1, delta * 1.8);
+        m.group.rotation.z +=
+          shortestAngleDelta(targetPitch, m.group.rotation.z) *
+          Math.min(1, delta * 1.8);
+
+        // Seamless off-screen re-entry (occasionally swaps direction naturally)
+        const margin = m.length * 1.35;
+        if (m.group.position.x > 170 + margin) {
+          m.facingDir = Math.random() < 0.35 ? -1 : 1;
+          m.group.position.x =
+            m.facingDir === 1 ? -170 - margin : 170 + margin;
+          const nextScreenY =
+            m.minY + Math.random() * Math.max(4, m.maxY - m.minY);
+          m.preferredScreenY = nextScreenY;
+          m.group.position.y = 250 - nextScreenY;
+          m.vx = m.baseSpeed * m.facingDir;
+          m.vy = 0;
+          m.state = "cruising";
+          m.breathCooldown = 8 + Math.random() * 9;
+        } else if (m.group.position.x < -170 - margin) {
+          m.facingDir = Math.random() < 0.7 ? 1 : -1;
+          m.group.position.x =
+            m.facingDir === 1 ? -170 - margin : 170 + margin;
+          const nextScreenY =
+            m.minY + Math.random() * Math.max(4, m.maxY - m.minY);
+          m.preferredScreenY = nextScreenY;
+          m.group.position.y = 250 - nextScreenY;
+          m.vx = m.baseSpeed * m.facingDir;
+          m.vy = 0;
+          m.state = "cruising";
+          m.breathCooldown = 8 + Math.random() * 9;
+        }
+      }
+
+      // 2. Update River Turtles (alternating paddles, occasional surface peeking, food foraging)
+      for (const t of turtles) {
+        t.clickImpulse *= Math.exp(-delta * 1.8);
+        t.clickNudgeY *= Math.exp(-delta * 2.0);
+        t.glideTimer -= delta;
+
+        let desiredVx = t.baseSpeed * t.facingDir * (1 + t.clickImpulse);
+        let desiredVy = 0;
+
+        const foodTarget = findBestFood(
+          t.group.position.x,
+          t.group.position.y,
+          145,
+          "fruit"
+        );
+
+        if (foodTarget && t.clickImpulse < 0.15) {
+          const dx = foodTarget.x - t.group.position.x;
+          const dy = foodTarget.y - t.group.position.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > t.length * 0.45) {
+            const ang = Math.atan2(dy, dx);
+            const speed = t.baseSpeed * 1.5;
+            desiredVx = Math.cos(ang) * speed;
+            desiredVy = Math.sin(ang) * speed;
+            t.facingDir = dx >= 0 ? 1 : -1;
+          } else {
+            foodManager.takeBite(foodTarget, 0.7 * delta * 6.5);
+            desiredVx = t.facingDir * t.baseSpeed * 0.35;
+          }
+        } else {
+          t.surfaceCooldown -= delta;
+          if (t.surfaceTimer > 0) {
+            t.surfaceTimer -= delta;
+            const peekY = surfaceSceneY - t.height * 0.35;
+            desiredVx = t.baseSpeed * 0.45 * t.facingDir;
+            desiredVy = (peekY - t.group.position.y) * 1.1;
+          } else {
+            if (t.surfaceCooldown <= 0 && Math.abs(t.group.position.x) < 125) {
+              t.surfaceTimer = 2.4 + Math.random() * 1.2;
+              t.surfaceCooldown = 11 + Math.random() * 9;
+            }
+            const wanderY =
+              Math.sin(tiempo * 0.42 + t.wanderPhase) * 8 +
+              Math.cos(tiempo * 0.21 + t.wanderPhase * 1.4) * 5;
+            const targetSceneY = THREE.MathUtils.clamp(
+              250 - (t.preferredScreenY + wanderY) + t.clickNudgeY,
+              250 - t.maxY,
+              250 - t.minY
+            );
+            desiredVy = (targetSceneY - t.group.position.y) * 0.9;
+          }
+        }
+
+        const obs = computeObstacleAvoidance(
+          t.group.position.x,
+          t.group.position.y,
+          t.height * 0.65
+        );
+        desiredVx += obs.ax * 0.45;
+        desiredVy += obs.ay * 0.5;
+
+        t.vx = THREE.MathUtils.damp(t.vx, desiredVx, 2.2, delta);
+        t.vy = THREE.MathUtils.damp(t.vy, desiredVy, 2.2, delta);
+        t.group.position.x += t.vx * delta;
+        t.group.position.y += t.vy * delta;
+
+        const maxTurtleSceneY = surfaceSceneY - t.height * 0.32;
+        const minTurtleSceneY = bottomSceneY + t.height * 0.6;
+        t.group.position.y = THREE.MathUtils.clamp(
+          t.group.position.y,
+          minTurtleSceneY,
+          Math.max(minTurtleSceneY + 2, maxTurtleSceneY)
+        );
+
+        // Natural alternating flipper strokes
+        const speedNorm = Math.hypot(t.vx, t.vy) / Math.max(4, t.baseSpeed);
+        t.swimPhase += delta * (2.2 + speedNorm * 1.8) * intensidad;
+        t.flippers.forEach((f, idx) => {
+          const isFront = idx < 2;
+          const phaseOffset = (idx % 2) * Math.PI + (isFront ? 0 : 0.7);
+          f.rotation.y =
+            Math.sin(t.swimPhase + phaseOffset) *
+            (isFront ? 0.55 : 0.32) *
+            intensidad;
+          f.rotation.z =
+            Math.cos(t.swimPhase + phaseOffset) *
+            (isFront ? 0.24 : 0.14) *
+            intensidad;
+        });
+        t.head.rotation.z =
+          (t.surfaceTimer > 0 ? 0.18 : 0.04) +
+          Math.sin(tiempo * 1.3 + t.wanderPhase) * 0.05;
+
+        const targetYaw = t.vx < -1.2 ? Math.PI : 0;
+        const targetPitch = THREE.MathUtils.clamp(
+          Math.atan2(t.vy, Math.max(4, Math.abs(t.vx))) * 0.6,
+          -0.38,
+          0.38
+        );
+        t.group.rotation.y +=
+          shortestAngleDelta(targetYaw, t.group.rotation.y) *
+          Math.min(1, delta * 2.5);
+        t.group.rotation.z +=
+          shortestAngleDelta(targetPitch, t.group.rotation.z) *
+          Math.min(1, delta * 2.5);
+
+        const margin = t.length * 1.4;
+        if (t.group.position.x > 170 + margin || t.group.position.x < -170 - margin) {
+          t.facingDir = t.group.position.x > 0 ? (Math.random() < 0.4 ? -1 : 1) : (Math.random() < 0.75 ? 1 : -1);
+          t.group.position.x =
+            t.facingDir === 1 ? -170 - margin : 170 + margin;
+          const nextScreenY =
+            t.minY + Math.random() * Math.max(4, t.maxY - t.minY);
+          t.preferredScreenY = nextScreenY;
+          t.group.position.y = 250 - nextScreenY;
+          t.vx = t.baseSpeed * t.facingDir;
+          t.vy = 0;
+        }
+      }
+
+      // 3. Update Fish (organic schooling, obstacle & manatee avoidance, food competition, non-cyclic wandering)
+      for (const pez of peces) {
+        const brain = fishBrains.get(pez)!;
+        brain.biteCooldown = Math.max(0, brain.biteCooldown - delta);
+        brain.postMealBoost *= Math.exp(-delta * 1.4);
+
+        pez.burstTimer -= delta;
+        if (pez.pauseTimer > 0) {
+          pez.pauseTimer = Math.max(0, pez.pauseTimer - delta);
+        } else if (pez.burstTimer <= 0) {
+          if (Math.random() < 0.24) {
+            pez.pauseTimer = 0.55 + Math.random() * 0.75;
+            pez.burstTimer = 2.2 + Math.random() * 2.6;
+          } else {
+            pez.burstBoost = 0.28 + Math.random() * 0.45;
+            pez.burstTimer = 2.0 + Math.random() * 2.6;
+          }
+        }
+
+        // Occasional natural change of exploration direction/depth (never mechanical loop)
+        brain.modeTimer -= delta;
+        if (brain.modeTimer <= 0) {
+          brain.modeTimer = 3.5 + Math.random() * 4.5;
+          brain.targetOffsetY = (Math.random() - 0.5) * 18;
+          // Solitary or curious fish occasionally turn upstream briefly if well inside view
+          if (
+            !brain.isSchooling &&
+            Math.abs(pez.group.position.x) < 110 &&
+            Math.random() < 0.32
+          ) {
+            brain.facingDir = brain.facingDir === 1 ? -1 : 1;
+          } else if (brain.facingDir === -1 && Math.random() < 0.65) {
+            brain.facingDir = 1;
+          }
+        }
+
+        pez.burstBoost *= Math.exp(-delta * 1.45);
+        pez.clickImpulse *= Math.exp(-delta * 2.1);
+        pez.clickNudgeY *= Math.exp(-delta * 2.4);
+
+        // Check for nearby food to detect, compete for, and eat
+        const food = findBestFood(
+          pez.group.position.x,
+          pez.group.position.y,
+          135
+        );
+
+        let desiredVx = 0;
+        let desiredVy = 0;
+        let isForaging = false;
+
+        if (food && pez.clickImpulse < 0.15) {
+          const dx = food.x - pez.group.position.x;
+          const dy = food.y - pez.group.position.y;
+          const dist = Math.hypot(dx, dy);
+          isForaging = true;
+
+          if (dist > pez.length * 0.42) {
+            const ang = Math.atan2(dy, dx);
+            const chaseSpeed =
+              pez.baseSpeed * (1.55 + pez.burstBoost * 0.4);
+            desiredVx = Math.cos(ang) * chaseSpeed;
+            desiredVy = Math.sin(ang) * chaseSpeed;
+            brain.facingDir = dx >= 0 ? 1 : -1;
+          } else {
+            // Take a quick natural bite and dart slightly away (competition!)
+            if (brain.biteCooldown <= 0) {
+              foodManager.takeBite(food, 0.58);
+              brain.biteCooldown = 0.42 + Math.random() * 0.25;
+              brain.postMealBoost = 0.65;
+              pez.clickNudgeY = (Math.random() - 0.5) * 10;
+            }
+            desiredVx = brain.facingDir * pez.baseSpeed * 0.5;
+            desiredVy = (Math.random() - 0.5) * 6;
+          }
+        }
+
+        if (!isForaging) {
+          const driftFactor = pez.pauseTimer > 0 ? 0.42 : 1.0;
+          const dirSpeed =
+            brain.facingDir === 1
+              ? pez.baseSpeed
+              : pez.baseSpeed * 0.65; // slightly slower when swimming against gentle current
+          desiredVx =
+            brain.facingDir *
+            dirSpeed *
+            (driftFactor +
+              pez.burstBoost * 0.6 +
+              pez.clickImpulse * 1.15 +
+              brain.postMealBoost * 0.45);
+
+          const meanderY =
+            Math.sin(tiempo * pez.wanderFreq + pez.wanderPhase) *
+              pez.meanderAmp +
+            Math.cos(tiempo * pez.wanderFreq * 0.43 + pez.wanderPhase * 1.7) *
+              (pez.meanderAmp * 0.55);
+
+          const desiredScreenY = THREE.MathUtils.clamp(
+            pez.preferredScreenY + brain.targetOffsetY + meanderY,
             pez.minY,
             pez.maxY
           );
-          pez.group.position.y = THREE.MathUtils.damp(
-            pez.group.position.y,
-            250 - y,
-            2.1,
-            delta
+          const minSceneY = 250 - pez.maxY;
+          const maxSceneY = 250 - pez.minY;
+          const targetSceneY = THREE.MathUtils.clamp(
+            250 - desiredScreenY + pez.clickNudgeY,
+            minSceneY,
+            maxSceneY
           );
-          targetYaw = 0;
-          targetPitch = Math.sin(faseNado * 0.52) * 0.025 * potencia;
+          desiredVy = (targetSceneY - pez.group.position.y) * 1.3;
+
+          // Subtle schooling cohesion + separation among nearby peers
+          if (brain.isSchooling) {
+            let cohX = 0;
+            let cohY = 0;
+            let count = 0;
+            for (const other of peces) {
+              if (other === pez) continue;
+              const dx = other.group.position.x - pez.group.position.x;
+              const dy = other.group.position.y - pez.group.position.y;
+              const d2 = dx * dx + dy * dy;
+              if (d2 < 32 * 32 && d2 > 0.1) {
+                // Personal space separation
+                const d = Math.sqrt(d2);
+                desiredVx -= (dx / d) * 4.5;
+                desiredVy -= (dy / d) * 4.5;
+              } else if (
+                d2 < 85 * 85 &&
+                fishBrains.get(other)?.species === brain.species
+              ) {
+                cohX += other.group.position.x;
+                cohY += other.group.position.y;
+                count++;
+              }
+            }
+            if (count > 0) {
+              desiredVx += ((cohX / count - pez.group.position.x) * 0.12);
+              desiredVy += ((cohY / count - pez.group.position.y) * 0.16);
+            }
+          }
         }
 
-        const turnRate = avanzando ? 3.5 : movimiento.reaccion * 5.0;
+        // Obstacle avoidance (submerged rocks & driftwood logs)
+        const obs = computeObstacleAvoidance(
+          pez.group.position.x,
+          pez.group.position.y,
+          pez.height * 0.65
+        );
+        desiredVx += obs.ax;
+        desiredVy += obs.ay;
+
+        // Gentle parting around passing manatees
+        for (const m of manatees) {
+          const dx = pez.group.position.x - m.group.position.x;
+          const dy = pez.group.position.y - m.group.position.y;
+          const safeR = m.length * 0.45 + pez.height;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < safeR * safeR && d2 > 0.1) {
+            const d = Math.sqrt(d2);
+            const push = ((safeR - d) / safeR) * 18;
+            desiredVx += (dx / d) * push * 0.4;
+            desiredVy += (dy / d) * push;
+          }
+        }
+
+        pez.vx = THREE.MathUtils.damp(pez.vx, desiredVx, 3.0, delta);
+        pez.vy = THREE.MathUtils.damp(pez.vy, desiredVy, 2.7, delta);
+        pez.group.position.x += pez.vx * delta;
+        pez.group.position.y += pez.vy * delta;
+
+        // Soft vertical river bounds
+        const softMinSceneY = 250 - (limiteInferior - pez.height * 0.6);
+        const softMaxSceneY = 250 - (limiteSuperior + pez.height * 0.5);
+        if (pez.group.position.y < softMinSceneY) {
+          pez.group.position.y = THREE.MathUtils.damp(
+            pez.group.position.y,
+            softMinSceneY,
+            5.5,
+            delta
+          );
+          if (pez.vy < 0) pez.vy *= 0.55;
+        } else if (pez.group.position.y > softMaxSceneY) {
+          pez.group.position.y = THREE.MathUtils.damp(
+            pez.group.position.y,
+            softMaxSceneY,
+            5.5,
+            delta
+          );
+          if (pez.vy > 0) pez.vy *= 0.55;
+        }
+
+        // Propulsion-coupled tail & body undulation
+        const speedNorm =
+          Math.hypot(pez.vx, pez.vy) / Math.max(7, pez.baseSpeed);
+        const targetEnergy = THREE.MathUtils.clamp(
+          speedNorm *
+            (0.82 +
+              pez.burstBoost * 0.45 +
+              pez.clickImpulse * 0.8 +
+              brain.postMealBoost * 0.4),
+          0.4,
+          2.5
+        );
+        pez.tailEnergy = THREE.MathUtils.damp(
+          pez.tailEnergy,
+          targetEnergy,
+          4.5,
+          delta
+        );
+        pez.swimPhase += delta * (2.5 + pez.tailEnergy * 1.85) * intensidad;
+
+        const bodyAmp =
+          (reducido ? 0.2 : 0.9) *
+          Math.min(1.5, 0.72 + pez.tailEnergy * 0.34);
+        const posiciones = pez.vertices;
+        const halfLen = pez.length * 0.36;
+        for (let i = 0; i < posiciones.count; i++) {
+          const offset = i * 3;
+          const x = pez.baseVertices[offset];
+          const dorsalidad = Math.max(0, -x / halfLen);
+          const lateralWave =
+            Math.sin(pez.swimPhase - x * 0.28) *
+            pez.height *
+            0.08 *
+            bodyAmp *
+            dorsalidad ** 1.4;
+          const verticalFlex =
+            Math.cos(pez.swimPhase * 0.55 - x * 0.22) *
+            pez.height *
+            0.022 *
+            bodyAmp *
+            dorsalidad ** 1.5;
+          posiciones.array[offset] = pez.baseVertices[offset];
+          posiciones.array[offset + 1] =
+            pez.baseVertices[offset + 1] + verticalFlex;
+          posiciones.array[offset + 2] =
+            pez.baseVertices[offset + 2] + lateralWave;
+        }
+        posiciones.needsUpdate = true;
+        if (!reducido) {
+          pez.geometry.computeVertexNormals();
+        }
+
+        pez.tail.rotation.y = Math.sin(pez.swimPhase * 1.2) * 0.42 * bodyAmp;
+        pez.tail.rotation.z = Math.sin(pez.swimPhase * 0.55) * 0.11 * bodyAmp;
+        pez.dorsal.rotation.z = Math.sin(pez.swimPhase * 0.7) * 0.08 * bodyAmp;
+        pez.pectorals.forEach((aleta, index) => {
+          aleta.rotation.x =
+            Math.sin(pez.swimPhase * 1.1 + index * Math.PI) * 0.22 * bodyAmp;
+          aleta.rotation.z =
+            Math.sin(pez.swimPhase * 0.9 + index * Math.PI) * 0.08 * bodyAmp;
+        });
+
+        const targetYaw = pez.vx < -1.8 ? Math.PI : 0;
+        const speedMag = Math.max(6, Math.abs(pez.vx));
+        const targetPitch = THREE.MathUtils.clamp(
+          Math.atan2(pez.vy, speedMag) * 0.68,
+          -0.42,
+          0.42
+        );
+        const targetRoll = THREE.MathUtils.clamp(pez.vy * 0.007, -0.14, 0.14);
+
+        const turnRate = isForaging ? 4.8 : 3.0;
         pez.group.rotation.y +=
           shortestAngleDelta(targetYaw, pez.group.rotation.y) *
           Math.min(1, delta * turnRate);
         pez.group.rotation.z +=
           shortestAngleDelta(targetPitch, pez.group.rotation.z) *
-          Math.min(1, delta * (avanzando ? 2.4 : turnRate));
+          Math.min(1, delta * turnRate);
+        pez.group.rotation.x +=
+          shortestAngleDelta(targetRoll, pez.group.rotation.x) *
+          Math.min(1, delta * 2.5);
 
-        const screenX = pez.group.position.x + 170;
-        const medio = pez.length * 0.62;
-        if (!pez.wrapGhost && screenX >= anchoEscena - medio) {
-          pez.wrapGhost = pez.group.clone(true);
-          escena.add(pez.wrapGhost);
-        }
-        if (pez.wrapGhost) copiarArticulacion(pez, pez.wrapGhost);
-        if (screenX >= anchoEscena + medio) {
-          if (pez.wrapGhost) adoptarFantasma(pez);
-          else {
-            pez.group.position.x -= anchoEscena;
-            pez.group.rotation.set(0, 0, 0);
-          }
-        }
-
-        const actualY = 250 - pez.group.position.y;
-        if (actualY < limiteSuperior + pez.height * 0.45) {
-          pez.group.position.y = 250 - (limiteSuperior + pez.height * 0.45);
-        } else if (actualY > limiteInferior - pez.height * 0.55) {
-          pez.group.position.y = 250 - (limiteInferior - pez.height * 0.55);
+        // Seamless off-screen exit & fresh non-cyclic re-entry
+        const exitMargin = 175 + pez.length * 1.2;
+        if (pez.group.position.x > exitMargin || pez.group.position.x < -exitMargin) {
+          const enterFromLeft = pez.group.position.x > 0 ? Math.random() < 0.8 : Math.random() < 0.75;
+          brain.facingDir = enterFromLeft ? 1 : -1;
+          pez.group.position.x = enterFromLeft
+            ? -175 - pez.length * (1.2 + Math.random() * 2.2)
+            : 175 + pez.length * (1.2 + Math.random() * 2.2);
+          const nextScreenY =
+            pez.minY + Math.random() * Math.max(4, pez.maxY - pez.minY);
+          pez.preferredScreenY = nextScreenY;
+          pez.group.position.y = 250 - nextScreenY;
+          pez.wanderPhase = Math.random() * Math.PI * 2;
+          brain.targetOffsetY = 0;
+          pez.vx = pez.baseSpeed * brain.facingDir * (0.88 + Math.random() * 0.22);
+          pez.vy = 0;
+          pez.burstBoost = 0;
+          pez.pauseTimer = 0;
+          pez.clickImpulse = 0;
+          pez.clickNudgeY = 0;
+          pez.group.rotation.set(0, brain.facingDir === -1 ? Math.PI : 0, 0);
         }
       }
 
@@ -1387,63 +1366,18 @@ export class RiverGaugeComponent
       }
     }
 
-    const onFishFeed = (evento: Event) => {
-      const custom = evento as CustomEvent<{ x: number; y: number }>;
-      const x = THREE.MathUtils.clamp(custom.detail.x, 0, anchoEscena) - 170;
-      const y = THREE.MathUtils.clamp(
-        custom.detail.y,
-        superficie + 20,
-        limiteInferior
-      );
-      _feedObjective.set(x, 250 - y, 0);
-
-      waterBackUniforms.uRipplePos.value.set(x, 250 - custom.detail.y);
-      waterForeUniforms.uRipplePos.value.set(x, 250 - custom.detail.y);
-      rippleStartTime = tiempo;
-
-      const cercanos = peces
-        .map((pez) => {
-          let distancia = Math.hypot(
-            pez.group.position.x - _feedObjective.x,
-            pez.group.position.y - _feedObjective.y
-          );
-          let objetivoX = _feedObjective.x;
-          let vieneDeFantasma = false;
-          if (pez.wrapGhost) {
-            const distanciaFantasma = Math.hypot(
-              pez.group.position.x - anchoEscena - _feedObjective.x,
-              pez.group.position.y - _feedObjective.y
-            );
-            if (distanciaFantasma < distancia) {
-              distancia = distanciaFantasma;
-              objetivoX += anchoEscena;
-              vieneDeFantasma = true;
-            }
-          }
-          return { pez, distancia, objetivoX, vieneDeFantasma };
-        })
-        .filter(({ distancia }) => distancia < 145)
-        .sort((a, b) => a.distancia - b.distancia)
-        .slice(0, 3);
-
-      for (const { pez, objetivoX, vieneDeFantasma } of cercanos) {
-        pez.target = {
-          x: objetivoX,
-          y: _feedObjective.y,
-          hasta: tiempo + 3.5,
-          wrap: vieneDeFantasma,
-        };
-      }
-    };
-
-    panel.addEventListener("fish-feed", onFishFeed);
     frameId = requestAnimationFrame(animar);
 
     this.cleanupThree = () => {
       disposed = true;
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
-      panel.removeEventListener("fish-feed", onFishFeed);
+      panel.style.cursor = "default";
+      panel.removeEventListener("pointerdown", onPointerDown);
+      panel.removeEventListener("pointermove", onPointerMove);
+      panel.removeEventListener("pointerleave", onPointerLeave);
+      panel.removeEventListener("river-feed", onRiverFeed);
+      foodManager.disposeAll();
       if (resizeObserver) resizeObserver.disconnect();
       else window.removeEventListener("resize", redimensionar);
       for (const item of disposables) {

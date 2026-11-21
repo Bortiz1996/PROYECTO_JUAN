@@ -813,14 +813,11 @@ async function startServer() {
         (bogotaNow.dayMidnightMs - ultimoDayMs) / 86_400_000
       );
 
-      let estadoPeces: "calm" | "uncomfortable" | "scared" = "calm";
+      let estadoPeces: "calm" | "scared" = "calm";
       let estadoPecesTexto = "tranquilos";
       if (nivelCm > 900) {
         estadoPeces = "scared";
         estadoPecesTexto = "asustados";
-      } else if (deltaCm < 0) {
-        estadoPeces = "uncomfortable";
-        estadoPecesTexto = "incómodos";
       }
 
       const tsUlt = ultimo.ultimaLectura ?? ultimo.fecha;
