@@ -26,7 +26,10 @@ const APP_URL = "https://ing-ambiente-proyect1001.github.io/PROYECTO_JUAN/";
 
 const RAW_CSV_URL =
   "https://raw.githubusercontent.com/ing-ambiente-proyect1001/PROYECTO_JUAN/main/nivel_calamar.csv";
+const RAW_FEWS_URL =
+  "https://raw.githubusercontent.com/ing-ambiente-proyect1001/PROYECTO_JUAN/main/assets/fews_calamar.json";
 const BUNDLED_CSV_PATH = "assets/nivel_calamar.csv";
+const BUNDLED_FEWS_PATH = "assets/fews_calamar.json";
 const SUBZONAS_CSV_PATH = "assets/subzonas_magdalena_cauca.csv";
 
 const UMBRAL_AMARILLA_CM: number | null = null;
@@ -305,6 +308,99 @@ async function loadHistoricalRows(refresh: boolean): Promise<InternalRow[]> {
 
   const localText = await fetchText(BUNDLED_CSV_PATH, 10_000);
   return parseHistoricalCsv(localText);
+}
+
+interface FewsJsonPayload {
+  updatedAt?: string;
+  station?: string;
+  records?: RawRecord[];
+}
+
+function parseFewsJson(payload: FewsJsonPayload): InternalRow[] {
+  if (!payload || !Array.isArray(payload.records)) return [];
+  const rows: InternalRow[] = [];
+  for (const r of payload.records) {
+    const fecha = parseNaiveTimestamp(r?.f);
+    const nivelCm = cleanNivel(r?.n);
+    if (!fecha || nivelCm === null) continue;
+    const ultimaLectura = parseNaiveTimestamp(r?.u) ?? fecha;
+    rows.push({
+      fecha,
+      nivelCm,
+      ultimaLectura,
+      fuente: 1,
+    });
+  }
+  rows.sort((a, b) => a.fecha.ms - b.fecha.ms);
+  return rows;
+}
+
+async function loadFewsRows(refresh: boolean): Promise<{
+  rows: InternalRow[] | null;
+  error: string | null;
+}> {
+  const fetchJson = async (
+    url: string,
+    timeoutMs: number
+  ): Promise<FewsJsonPayload> => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        cache: refresh ? "no-cache" : "default",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} al leer ${url}`);
+      }
+      return (await response.json()) as FewsJsonPayload;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  };
+
+  try {
+    const remoteJson = await fetchJson(RAW_FEWS_URL, 6000);
+    const parsed = parseFewsJson(remoteJson);
+    if (parsed.length > 0) {
+      return { rows: parsed, error: null };
+    }
+  } catch {
+    // Fallback to local bundled FEWS snapshot.
+  }
+
+  try {
+    const localJson = await fetchJson(BUNDLED_FEWS_PATH, 8000);
+    const parsed = parseFewsJson(localJson);
+    if (parsed.length > 0) {
+      return { rows: parsed, error: null };
+    }
+  } catch {
+    // No FEWS snapshot available yet.
+  }
+
+  return {
+    rows: null,
+    error:
+      "En alojamiento estático (GitHub Pages) el navegador no puede consultar FEWS IDEAM directamente por CORS; se muestra el último histórico guardado.",
+  };
+}
+
+function combineData(
+  histRows: InternalRow[],
+  fewsRows: InternalRow[] | null
+): InternalRow[] {
+  if (!fewsRows || fewsRows.length === 0) {
+    return histRows;
+  }
+  const map = new Map<string, InternalRow>();
+  for (const r of histRows) {
+    map.set(r.fecha.iso, r);
+  }
+  for (const r of fewsRows) {
+    map.set(r.fecha.iso, r);
+  }
+  return Array.from(map.values()).sort((a, b) => a.fecha.ms - b.fecha.ms);
 }
 
 async function loadSubzonas(): Promise<Subzona[]> {
@@ -651,19 +747,21 @@ function estimateTrend(rows: InternalRow[]): {
 export async function buildStaticDashboard(
   forceRefresh = false
 ): Promise<DashboardResponse> {
-  const [histRows, subzonas, weatherRes] = await Promise.all([
+  const [histRows, fewsRes, subzonas, weatherRes] = await Promise.all([
     loadHistoricalRows(forceRefresh),
+    loadFewsRows(forceRefresh),
     loadSubzonas(),
     loadWeather(forceRefresh),
   ]);
 
-  if (histRows.length < 2) {
+  const combined = combineData(histRows, fewsRes.rows);
+  if (combined.length < 2) {
     throw new Error("Hay muy pocos datos para mostrar el tablero.");
   }
 
   const totalAreaKm2 = subzonas.reduce((sum, s) => sum + s.areaKm2, 0);
-  const ultimo = histRows[histRows.length - 1];
-  const previo = histRows[histRows.length - 2];
+  const ultimo = combined[combined.length - 1];
+  const previo = combined[combined.length - 2];
   const nivelCm = ultimo.nivelCm;
   const deltaCm = nivelCm - previo.nivelCm;
 
@@ -700,7 +798,7 @@ export async function buildStaticDashboard(
   const tsUlt = ultimo.ultimaLectura ?? ultimo.fecha;
   const thresholds = calculateThresholds();
   const alertState = evaluateAlertState(nivelCm, thresholds);
-  const trend = estimateTrend(histRows);
+  const trend = estimateTrend(combined);
 
   let forecast: ForecastHour[] | null = null;
   let forecastError: string | null = null;
@@ -717,19 +815,26 @@ export async function buildStaticDashboard(
       weatherRes.error || "No hay datos meteorológicos actuales disponibles.";
   }
 
-  const records: RawRecord[] = histRows.map((r) => ({
+  const records: RawRecord[] = combined.map((r) => ({
     f: r.fecha.iso,
     n: r.nivelCm,
     u: r.ultimaLectura ? r.ultimaLectura.iso : null,
     s: r.fuente,
   }));
 
+  const fewsRows = fewsRes.rows;
+
   return {
     records,
-    fewsCount: 0,
-    fewsRange: null,
-    fewsError:
-      "En GitHub Pages no hay servidor backend para consultar FEWS IDEAM directamente; se muestra el último dato guardado.",
+    fewsCount: fewsRows ? fewsRows.length : 0,
+    fewsRange:
+      fewsRows && fewsRows.length > 0
+        ? {
+            start: formatFechaEs(fewsRows[0].fecha, false),
+            end: formatFechaEs(fewsRows[fewsRows.length - 1].fecha, false),
+          }
+        : null,
+    fewsError: fewsRes.error,
     meta: {
       nivelCm,
       fechaUlt: ultimo.fecha.iso,
@@ -738,7 +843,7 @@ export async function buildStaticDashboard(
       deltaCm,
       cambioTexto,
       edadDias,
-      fuente: "Histórico IDEAM",
+      fuente: ultimo.fuente === 1 ? "FEWS" : "Histórico IDEAM",
       estadoPeces,
       estadoPecesTexto,
     },
