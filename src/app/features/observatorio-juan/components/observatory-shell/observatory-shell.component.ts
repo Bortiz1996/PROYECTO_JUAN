@@ -1,0 +1,317 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  computed,
+  inject,
+  signal,
+} from "@angular/core";
+import { PwaInstallComponent } from "../../../../components/pwa-install/pwa-install.component";
+import { DashboardService } from "../../../../services/dashboard.service";
+import type { DashboardResponse } from "../../../../../types";
+import { formatNumberComma } from "../../../../../utils/format";
+import {
+  createSeedObservatoryBlocks,
+  mapDashboardToObservatoryBlocks,
+} from "../../data/calamar-seed-blocks";
+import type {
+  ObservatoryBlock,
+  ObservatoryNavTab,
+} from "../../models/limnimetro-block.model";
+import { BottomNavComponent } from "../bottom-nav/bottom-nav.component";
+import { HydroBlockCardComponent } from "../hydro-block-card/hydro-block-card.component";
+
+const TAB_BLOCK_FILTER: Record<
+  ObservatoryNavTab,
+  ReadonlyArray<ObservatoryBlock["tipo"]>
+> = {
+  bloques: [
+    "nivel_actual",
+    "serie_historica",
+    "alerta_hidrologica",
+    "boletin_ideam",
+  ],
+  niveles: ["nivel_actual"],
+  historico: ["serie_historica"],
+  alertas: ["alerta_hidrologica"],
+  calamar: ["boletin_ideam"],
+};
+
+@Component({
+  selector: "app-observatory-shell",
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [BottomNavComponent, HydroBlockCardComponent, PwaInstallComponent],
+  template: `
+    <div class="obs-shell">
+      <!-- Barra superior adaptable (3 zonas en escritorio, compacta en móvil) -->
+      <header class="obs-topbar">
+        <div class="obs-topbar-inner">
+          <a
+            href="#inicio"
+            class="obs-brand-wordmark"
+            (click)="onBrandClick($event)"
+          >
+            JUAN
+          </a>
+
+          <app-bottom-nav
+            class="obs-desktop-nav-host"
+            variant="desktop-links"
+            [activeTab]="activeTab()"
+            [hasActiveAlert]="hasActiveAlert()"
+            (tabChange)="onTabChange($event)"
+          />
+
+          <div class="obs-topbar-action">
+            <button
+              type="button"
+              class="obs-refresh-btn"
+              [disabled]="refreshing()"
+              (click)="fetchDashboard(true)"
+            >
+              {{ refreshing() ? "Sincronizando..." : "Actualizar" }}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Contenedor principal sobre fondo neutro -->
+      <div class="obs-workspace" id="inicio">
+        <!-- Ficha lateral fija en escritorio amplio (en móvil se muestra compacta arriba del feed) -->
+        <aside class="obs-station-rail" aria-label="Resumen de la estación Calamar">
+          <div class="obs-profile-block">
+            <div
+              class="obs-profile-cover"
+              [style.--cover-image]="'url(assets/juan_portada.webp)'"
+            ></div>
+            <img
+              class="obs-profile-avatar"
+              src="assets/juan_icon.png"
+              alt="Observatorio JUAN"
+              referrerpolicy="no-referrer"
+            />
+            <div class="obs-profile-body">
+              <h1 class="obs-profile-title">Observatorio JUAN</h1>
+              <p class="obs-profile-subtitle">
+                Río Magdalena · {{ primaryStation().municipio }},
+                {{ primaryStation().departamento }} · IDEAM
+                {{ primaryStation().codigoIdeam }}
+              </p>
+
+              @if (primaryReading(); as lr) {
+                <div class="obs-rail-metrics">
+                  <div class="obs-rail-metric">
+                    <span>Nivel actual</span>
+                    <strong class="tabular-nums">
+                      {{ lr.nivelMetros.toFixed(2).replace(".", ",") }} m
+                    </strong>
+                  </div>
+                  <div class="obs-rail-metric">
+                    <span>Cota crítica</span>
+                    <strong class="tabular-nums">
+                      {{ lr.cotaReferenciaMetros.toFixed(2).replace(".", ",") }} m
+                    </strong>
+                  </div>
+                </div>
+              }
+
+              <app-pwa-install />
+            </div>
+          </div>
+        </aside>
+
+        <!-- Columna principal de bloques completos apilados verticalmente -->
+        <main class="obs-feed-column" aria-label="Bloques del observatorio hidrológico">
+          <!-- Encabezado compacto móvil con acceso PWA -->
+          <section class="obs-mobile-intro" aria-label="Identificación de estación">
+            <div class="obs-mobile-intro-row">
+              <img
+                class="obs-mobile-avatar"
+                src="assets/juan_icon.png"
+                alt="Observatorio JUAN"
+                referrerpolicy="no-referrer"
+              />
+              <div class="obs-mobile-intro-text">
+                <h1 class="obs-mobile-title">
+                  Observatorio Hidrológico JUAN
+                </h1>
+                <p class="obs-mobile-subtitle">
+                  Río Magdalena · Calamar, Bolívar · IDEAM
+                  {{ primaryStation().codigoIdeam }}
+                </p>
+              </div>
+            </div>
+            <app-pwa-install />
+          </section>
+
+          @if (errorMessage()) {
+            <div class="obs-sync-notice" role="status">
+              {{ errorMessage() }} Mostrando el último conjunto de datos
+              disponible.
+            </div>
+          }
+
+          <div class="obs-blocks-stack">
+            @for (block of visibleBlocks(); track block.id) {
+              <app-hydro-block-card
+                [block]="block"
+                [refreshing]="refreshing()"
+                (refreshRequested)="fetchDashboard(true)"
+                (exportCsvRequested)="downloadCsv()"
+                (shareRequested)="shareBlock($event)"
+                (navigateTabRequested)="onTabChange($event)"
+              />
+            }
+          </div>
+
+          <footer class="obs-legal-footer">
+            <p>
+              <strong>Fuente:</strong> IDEAM, Hidrología Nacional Diaria y
+              exportaciones DHIME; estación limnimétrica
+              {{ primaryStation().codigoIdeam }} – Calamar, Bolívar. Herramienta
+              ciudadana informativa; no reemplaza los avisos oficiales del
+              IDEAM, la UNGRD ni del Consejo Municipal de Gestión del Riesgo.
+            </p>
+          </footer>
+        </main>
+      </div>
+
+      <!-- Barra de navegación inferior fija en móvil -->
+      <app-bottom-nav
+        class="obs-mobile-nav-host"
+        variant="mobile-bar"
+        [activeTab]="activeTab()"
+        [hasActiveAlert]="hasActiveAlert()"
+        (tabChange)="onTabChange($event)"
+      />
+    </div>
+  `,
+})
+export class ObservatoryShellComponent implements OnInit {
+  private readonly dashboardService = inject(DashboardService);
+
+  readonly blocks = signal<ObservatoryBlock[]>(createSeedObservatoryBlocks());
+  readonly rawDashboard = signal<DashboardResponse | null>(null);
+  readonly activeTab = signal<ObservatoryNavTab>("bloques");
+  readonly refreshing = signal<boolean>(false);
+  readonly errorMessage = signal<string | null>(null);
+
+  readonly visibleBlocks = computed(() => {
+    const allowedTypes = TAB_BLOCK_FILTER[this.activeTab()];
+    return this.blocks().filter((block) => allowedTypes.includes(block.tipo));
+  });
+
+  readonly primaryBlock = computed(() => this.blocks()[0]);
+
+  readonly primaryStation = computed(() => this.primaryBlock().station);
+
+  readonly primaryReading = computed(() => this.primaryBlock().lectura);
+
+  readonly hasActiveAlert = computed(() => {
+    const state = this.primaryReading().estadoAlerta;
+    return state === "amarilla" || state === "naranja" || state === "roja";
+  });
+
+  ngOnInit(): void {
+    void this.fetchDashboard(false);
+  }
+
+  onBrandClick(event: Event): void {
+    event.preventDefault();
+    this.onTabChange("bloques");
+  }
+
+  onTabChange(tab: ObservatoryNavTab): void {
+    this.activeTab.set(tab);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  async fetchDashboard(refreshFews = false): Promise<void> {
+    this.refreshing.set(true);
+    try {
+      const payload = await this.dashboardService.getDashboard(refreshFews);
+      this.rawDashboard.set(payload);
+      this.blocks.set(mapDashboardToObservatoryBlocks(payload));
+      this.errorMessage.set(null);
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "No se pudo consultar el servicio de datos.";
+      this.errorMessage.set(msg);
+    } finally {
+      this.refreshing.set(false);
+    }
+  }
+
+  async shareBlock(block: ObservatoryBlock): Promise<void> {
+    if (typeof window === "undefined") return;
+    const shareUrl = window.location.href;
+    const text =
+      `JUAN · Río Magdalena en Calamar (${block.station.codigoIdeam}): ` +
+      `${formatNumberComma(block.lectura.nivelCm, 1)} cm ` +
+      `(${block.lectura.nivelMetros.toFixed(2)} m) · ${block.estadoLabel}.`;
+
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title: `JUAN · ${block.titulo}`,
+          text,
+          url: shareUrl,
+        });
+        return;
+      } catch {
+        // Fallback to clipboard copy below if user cancels or browser blocks share
+      }
+    }
+
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
+      try {
+        await navigator.clipboard.writeText(`${text} ${shareUrl}`);
+      } catch {
+        // Ignore clipboard errors gracefully
+      }
+    }
+  }
+
+  downloadCsv(): void {
+    const raw = this.rawDashboard();
+    const lines = ["Fecha,Nivel_cm,Fuente,Ultima_lectura"];
+
+    if (raw && raw.records.length > 0) {
+      const fmtIso = (iso: string): string => {
+        const [datePart, timePart] = iso.split("T");
+        const hhmm = timePart ? timePart.slice(0, 5) : "00:00";
+        return `${datePart} ${hhmm}`;
+      };
+      for (const r of raw.records) {
+        const ult = r.u ? fmtIso(r.u) : "";
+        lines.push(`${fmtIso(r.f)},${r.n},${r.s === 1 ? "FEWS" : "Histórico IDEAM"},${ult}`);
+      }
+    } else {
+      const series =
+        this.blocks().find((b) => b.seriesPoints?.length)?.seriesPoints ?? [];
+      for (const r of series) {
+        lines.push(`${r.fecha},${r.nivelCm},${r.fuente},${r.ultimaLectura ?? ""}`);
+      }
+    }
+
+    const blob = new Blob([lines.join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "nivel_calamar.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+}
